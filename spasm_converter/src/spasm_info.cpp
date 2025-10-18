@@ -1,10 +1,35 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <sstream>
+#include <vector>
+#include <bitset>
 #include "../include/spasm_io.h"
 #include "../include/template_selection.h"
 
 using namespace spasm;
+
+// Helper to format float values for display
+std::string formatValue(float val) {
+    if (val == 0.0f) {
+        return "    .    ";
+    }
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    if (val >= 0) ss << " ";
+    if (std::abs(val) < 10) ss << " ";
+    if (std::abs(val) < 100) ss << " ";
+    ss << val;
+    // Ensure fixed width
+    std::string result = ss.str();
+    if (result.length() > 9) {
+        result = result.substr(0, 9);
+    }
+    while (result.length() < 9) {
+        result += " ";
+    }
+    return result;
+}
 
 void printPattern(PatternMask pattern) {
     for (int row = 0; row < 4; row++) {
@@ -21,18 +46,150 @@ void printPattern(PatternMask pattern) {
     }
 }
 
+// Print pattern with actual values
+void printPatternWithValues(PatternMask pattern, const float values[4]) {
+    // Map template positions to values
+    std::vector<float> mappedValues(16, 0.0f);
+    int valueIdx = 0;
+    for (int i = 0; i < 16 && valueIdx < 4; i++) {
+        if (pattern & (1 << i)) {
+            mappedValues[i] = values[valueIdx++];
+        }
+    }
+
+    // Print the pattern with values
+    for (int row = 0; row < 4; row++) {
+        std::cout << "    ";
+        for (int col = 0; col < 4; col++) {
+            int pos = row * 4 + col;
+            std::cout << formatValue(mappedValues[pos]) << " ";
+        }
+        std::cout << "\n";
+    }
+}
+
+// Decode and display position encoding details
+void displayPositionEncoding(PositionEncoding pos) {
+    uint32_t colIdx = getColumnIndex(pos);
+    bool colEnd = getColumnEnd(pos);
+    uint32_t rowIdx = getRowIndex(pos);
+    bool rowEnd = getRowEnd(pos);
+    uint32_t templateId = getTemplateId(pos);
+
+    std::cout << "    Raw: 0x" << std::hex << std::setw(8) << std::setfill('0') << pos << std::dec;
+    std::cout << " | Col:" << std::setw(4) << colIdx;
+    std::cout << (colEnd ? "[E]" : "   ");
+    std::cout << " | Row:" << std::setw(4) << rowIdx;
+    std::cout << (rowEnd ? "[E]" : "   ");
+    std::cout << " | Template:" << std::setw(2) << templateId;
+}
+
+// Visualize a range of blocks with their patterns and values
+void visualizeBlocks(const SPASMMatrix& spasm, int start, int count) {
+    std::cout << "\n========================================\n";
+    std::cout << "Block-by-Block Visualization\n";
+    std::cout << "========================================\n\n";
+
+    if (start >= (int)spasm.getNumPositions()) {
+        std::cout << "Error: Start position " << start << " exceeds total positions "
+                  << spasm.getNumPositions() << "\n";
+        return;
+    }
+
+    int end = std::min((int)spasm.getNumPositions(), start + count);
+    std::cout << "Showing blocks " << start << " to " << (end - 1)
+              << " (Total: " << spasm.getNumPositions() << ")\n\n";
+
+    for (int i = start; i < end; i++) {
+        std::cout << "╔════════════════════════════════════════════════════════════════╗\n";
+        std::cout << "║ Block #" << std::setw(6) << i
+                  << std::string(50, ' ') << "║\n";
+        std::cout << "╚════════════════════════════════════════════════════════════════╝\n";
+
+        // Get position encoding
+        PositionEncoding pos = spasm.getPosition(i);
+
+        // Display position encoding details
+        std::cout << "  Position Encoding:\n";
+        displayPositionEncoding(pos);
+        std::cout << "\n\n";
+
+        // Get template information
+        uint32_t templateId = getTemplateId(pos);
+        if (templateId >= spasm.templatePatterns.size()) {
+            std::cout << "  Error: Invalid template ID " << templateId << "\n\n";
+            continue;
+        }
+
+        PatternMask templatePattern = spasm.templatePatterns[templateId].mask;
+
+        // Get values for this position
+        auto values = spasm.getValuesForPosition(i);
+        if (values.size() != 4) {
+            std::cout << "  Warning: Expected 4 values, got " << values.size() << "\n\n";
+            continue;
+        }
+
+        // Display template pattern info
+        std::cout << "  Template #" << templateId << " (";
+        std::cout << __builtin_popcount(templatePattern) << " non-zeros, ";
+        std::cout << "Binary: " << std::bitset<16>(templatePattern) << "):\n\n";
+
+        // Display pattern with symbols
+        std::cout << "  Pattern Mask:\n";
+        printPattern(templatePattern);
+        std::cout << "\n";
+
+        // Display pattern with actual values
+        std::cout << "  Pattern with Values:\n";
+        float valArray[4] = {values[0], values[1], values[2], values[3]};
+        printPatternWithValues(templatePattern, valArray);
+        std::cout << "\n";
+
+        // Display raw value array
+        std::cout << "  Raw Values: [";
+        for (size_t j = 0; j < values.size(); j++) {
+            if (j > 0) std::cout << ", ";
+            std::cout << std::setw(8) << std::fixed << std::setprecision(3) << values[j];
+        }
+        std::cout << "]\n";
+
+        // Display block position in matrix
+        uint32_t colIdx = getColumnIndex(pos);
+        uint32_t rowIdx = getRowIndex(pos);
+        std::cout << "  Block Position in Tile: (" << rowIdx << ", " << colIdx << ")";
+        if (getRowEnd(pos)) std::cout << " [Row End]";
+        if (getColumnEnd(pos)) std::cout << " [Col End]";
+        std::cout << "\n";
+
+        std::cout << "\n" << std::string(68, '-') << "\n\n";
+    }
+}
+
+void printUsage(const char* progName) {
+    std::cout << "Usage: " << progName << " <file.spasm> [options]\n";
+    std::cout << "Options:\n";
+    std::cout << "  -v              : Verbose output (show templates and tiles)\n";
+    std::cout << "  -samples        : Show sample position encodings\n";
+    std::cout << "  -blocks <start> <count> : Visualize specific blocks with patterns and values\n";
+    std::cout << "                    start: Starting block index (0-based)\n";
+    std::cout << "                    count: Number of blocks to display\n";
+    std::cout << "Example:\n";
+    std::cout << "  " << progName << " matrix.spasm -blocks 0 5  # Show first 5 blocks\n";
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cout << "Usage: " << argv[0] << " <file.spasm> [options]\n";
-        std::cout << "Options:\n";
-        std::cout << "  -v        : Verbose output (show templates)\n";
-        std::cout << "  -samples  : Show sample position encodings\n";
+        printUsage(argv[0]);
         return 1;
     }
 
     std::string filename = argv[1];
     bool verbose = false;
     bool showSamples = false;
+    bool showBlocks = false;
+    int blockStart = 0;
+    int blockCount = 10;
 
     for (int i = 2; i < argc; i++) {
         std::string arg = argv[i];
@@ -40,6 +197,14 @@ int main(int argc, char* argv[]) {
             verbose = true;
         } else if (arg == "-samples") {
             showSamples = true;
+        } else if (arg == "-blocks" && i + 2 < argc) {
+            showBlocks = true;
+            blockStart = std::stoi(argv[i + 1]);
+            blockCount = std::stoi(argv[i + 2]);
+            i += 2;
+        } else if (arg == "-h" || arg == "--help") {
+            printUsage(argv[0]);
+            return 0;
         }
     }
 
@@ -59,7 +224,8 @@ int main(int argc, char* argv[]) {
         std::cout << "  Original non-zeros: " << spasm.originalNnz << "\n";
         std::cout << "  Padded non-zeros: " << spasm.nnz << "\n";
         std::cout << "  Padding count: " << spasm.numPaddings << "\n";
-        std::cout << "  Padding rate: " << (spasm.getPaddingRate() * 100) << "%\n\n";
+        std::cout << "  Padding rate: " << std::fixed << std::setprecision(2)
+                  << (spasm.getPaddingRate() * 100) << "%\n\n";
 
         std::cout << "Storage Information:\n";
         std::cout << "  Number of tiles: " << spasm.getNumTiles() << "\n";
@@ -102,12 +268,8 @@ int main(int argc, char* argv[]) {
             for (int i = 0; i < numSamples; i++) {
                 PositionEncoding pos = spasm.getPosition(i);
                 std::cout << "Position " << i << ":\n";
-                std::cout << "  Raw encoding: 0x" << std::hex << pos << std::dec << "\n";
-                std::cout << "  Column index: " << getColumnIndex(pos) << "\n";
-                std::cout << "  Column end: " << (getColumnEnd(pos) ? "true" : "false") << "\n";
-                std::cout << "  Row index: " << getRowIndex(pos) << "\n";
-                std::cout << "  Row end: " << (getRowEnd(pos) ? "true" : "false") << "\n";
-                std::cout << "  Template ID: " << getTemplateId(pos) << "\n";
+                displayPositionEncoding(pos);
+                std::cout << "\n";
 
                 // Show associated values
                 auto vals = spasm.getValuesForPosition(i);
@@ -125,6 +287,11 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Visualize specific blocks if requested
+        if (showBlocks) {
+            visualizeBlocks(spasm, blockStart, blockCount);
+        }
+
         // Tile distribution
         if (verbose && !spasm.tilePositions.empty()) {
             std::cout << "Tile Distribution:\n";
@@ -139,6 +306,23 @@ int main(int argc, char* argv[]) {
 
             std::cout << "  Tile grid: " << (maxTileRow + 1) << " x " << (maxTileCol + 1) << "\n";
             std::cout << "  Non-empty tiles: " << spasm.tilePositions.size() << "\n";
+
+            // Display tile block ranges
+            if (!spasm.tileBlockRanges.empty()) {
+                std::cout << "\n  Tile Block Ranges:\n";
+                int maxTilesToShow = std::min(10, (int)spasm.tileBlockRanges.size());
+                for (int i = 0; i < maxTilesToShow; i++) {
+                    const auto& pos = spasm.tilePositions[i];
+                    const auto& range = spasm.tileBlockRanges[i];
+                    std::cout << "    Tile " << i << " (" << pos.tileRowIdx << ", " << pos.tileColIdx << "): ";
+                    std::cout << "blocks [" << range.blockStart << ", " << range.blockEnd << ") ";
+                    std::cout << "(" << range.getNumBlocks() << " blocks)\n";
+                }
+                if (spasm.tileBlockRanges.size() > maxTilesToShow) {
+                    std::cout << "    ... (" << (spasm.tileBlockRanges.size() - maxTilesToShow)
+                              << " more tiles)\n";
+                }
+            }
 
             // Show tile map (if small enough)
             if (maxTileRow < 10 && maxTileCol < 10) {

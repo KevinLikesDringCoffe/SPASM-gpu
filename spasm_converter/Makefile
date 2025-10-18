@@ -11,12 +11,17 @@ MTX2SPASM_OBJS := $(MTX2SPASM_OBJS:.c=.o)
 SPASM_INFO_SRCS = src/spasm_info.cpp
 SPASM_INFO_OBJS = $(SPASM_INFO_SRCS:.cpp=.o)
 
+SPMV_COMPARE_SRCS = src/spmv_compare.cpp mmio.c
+SPMV_COMPARE_OBJS = $(SPMV_COMPARE_SRCS:.cpp=.o)
+SPMV_COMPARE_OBJS := $(SPMV_COMPARE_OBJS:.c=.o)
+
 # Target executables
 MTX2SPASM = mtx2spasm
 SPASM_INFO = spasm_info
+SPMV_COMPARE = spmv_compare
 
 # Default target - build main tools
-all: $(MTX2SPASM) $(SPASM_INFO)
+all: $(MTX2SPASM) $(SPASM_INFO) $(SPMV_COMPARE)
 
 # Build mtx2spasm converter
 $(MTX2SPASM): $(MTX2SPASM_OBJS)
@@ -24,6 +29,10 @@ $(MTX2SPASM): $(MTX2SPASM_OBJS)
 
 # Build spasm_info tool
 $(SPASM_INFO): $(SPASM_INFO_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+# Build spmv_compare tool
+$(SPMV_COMPARE): $(SPMV_COMPARE_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile C++ files
@@ -36,7 +45,7 @@ $(SPASM_INFO): $(SPASM_INFO_OBJS)
 
 # Clean build artifacts
 clean:
-	rm -f $(MTX2SPASM) $(SPASM_INFO) $(MTX2SPASM_OBJS) $(SPASM_INFO_OBJS) src/*.o *.o
+	rm -f $(MTX2SPASM) $(SPASM_INFO) $(SPMV_COMPARE) $(MTX2SPASM_OBJS) $(SPASM_INFO_OBJS) $(SPMV_COMPARE_OBJS) src/*.o *.o
 
 # Install (optional)
 install: all

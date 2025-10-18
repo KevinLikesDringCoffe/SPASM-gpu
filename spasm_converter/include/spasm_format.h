@@ -16,6 +16,7 @@ class SPASMMatrix {
 public:
     // ========== Global Composition (Tile Level) ==========
     std::vector<TilePosition> tilePositions;  // COO format for non-empty tiles
+    std::vector<TileBlockRange> tileBlockRanges;  // Block data ranges for each tile
     uint32_t tileSize;                        // Size of each tile (e.g., 1024)
 
     // ========== Local Patterns (Continuous Storage) ==========
@@ -71,6 +72,34 @@ public:
         }
     }
 
+    // Get block range for a specific tile index
+    TileBlockRange getTileBlockRange(size_t tileIndex) const {
+        assert(tileIndex < tileBlockRanges.size());
+        return tileBlockRanges[tileIndex];
+    }
+
+    // Get all position encodings for a specific tile
+    std::vector<PositionEncoding> getTilePositionEncodings(size_t tileIndex) const {
+        assert(tileIndex < tileBlockRanges.size());
+        const auto& range = tileBlockRanges[tileIndex];
+        return std::vector<PositionEncoding>(
+            positionEncodings.begin() + range.blockStart,
+            positionEncodings.begin() + range.blockEnd
+        );
+    }
+
+    // Get all values for a specific tile
+    std::vector<float> getTileValues(size_t tileIndex) const {
+        assert(tileIndex < tileBlockRanges.size());
+        const auto& range = tileBlockRanges[tileIndex];
+        size_t valueStart = range.blockStart * VALUES_PER_POSITION;
+        size_t valueEnd = range.blockEnd * VALUES_PER_POSITION;
+        return std::vector<float>(
+            values.begin() + valueStart,
+            values.begin() + valueEnd
+        );
+    }
+
     // ========== Statistics Methods ==========
 
     // Get storage size in bytes
@@ -79,6 +108,9 @@ public:
 
         // Global composition (tile positions)
         size += tilePositions.size() * sizeof(TilePosition);
+
+        // Tile block ranges
+        size += tileBlockRanges.size() * sizeof(TileBlockRange);
 
         // Position encodings (continuous storage)
         size += positionEncodings.size() * sizeof(PositionEncoding);
@@ -148,6 +180,7 @@ public:
     // Clear all data
     void clear() {
         tilePositions.clear();
+        tileBlockRanges.clear();
         positionEncodings.clear();
         values.clear();
         templatePatterns.clear();

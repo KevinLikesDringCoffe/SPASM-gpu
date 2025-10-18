@@ -11,7 +11,7 @@ namespace spasm {
 // SPASM file format structure (binary):
 // Header:
 //   - Magic number (4 bytes): 'SPAS'
-//   - Version (4 bytes): format version
+//   - Version (4 bytes): format version (v2 includes tile block ranges)
 //   - Matrix rows (4 bytes)
 //   - Matrix cols (4 bytes)
 //   - Tile size (4 bytes)
@@ -24,6 +24,8 @@ namespace spasm {
 //   - Template masks (2 bytes each * num_templates)
 // Tile positions:
 //   - Row, Col pairs (4 bytes each * num_tiles * 2)
+// Tile block ranges (v2+):
+//   - Start, End pairs (4 bytes each * num_tiles * 2)
 // Position encodings:
 //   - Position encodings (4 bytes each * num_positions)
 // Values:
@@ -42,7 +44,7 @@ public:
         const char magic[4] = {'S', 'P', 'A', 'S'};
         file.write(magic, 4);
 
-        uint32_t version = 1;
+        uint32_t version = 2;  // Version 2 includes tile block ranges
         file.write(reinterpret_cast<const char*>(&version), sizeof(uint32_t));
 
         uint32_t rows = matrix.rows;
@@ -76,6 +78,12 @@ public:
             file.write(reinterpret_cast<const char*>(&tileCol), sizeof(uint32_t));
         }
 
+        // Write tile block ranges (v2+)
+        for (const auto& range : matrix.tileBlockRanges) {
+            file.write(reinterpret_cast<const char*>(&range.blockStart), sizeof(uint32_t));
+            file.write(reinterpret_cast<const char*>(&range.blockEnd), sizeof(uint32_t));
+        }
+
         // Write position encodings
         file.write(reinterpret_cast<const char*>(matrix.positionEncodings.data()),
                    matrix.positionEncodings.size() * sizeof(PositionEncoding));
@@ -107,7 +115,7 @@ public:
         // Read version
         uint32_t version;
         file.read(reinterpret_cast<char*>(&version), sizeof(uint32_t));
-        if (version != 1) {
+        if (version != 1 && version != 2) {
             throw std::runtime_error("Unsupported SPASM format version: " + std::to_string(version));
         }
 
@@ -147,6 +155,23 @@ public:
             matrix.tilePositions.emplace_back(tileRow, tileCol);
         }
 
+        // Read tile block ranges (v2+)
+        if (version >= 2) {
+            matrix.tileBlockRanges.reserve(numTiles);
+            for (uint32_t i = 0; i < numTiles; i++) {
+                uint32_t blockStart, blockEnd;
+                file.read(reinterpret_cast<char*>(&blockStart), sizeof(uint32_t));
+                file.read(reinterpret_cast<char*>(&blockEnd), sizeof(uint32_t));
+                matrix.tileBlockRanges.emplace_back(blockStart, blockEnd);
+            }
+        } else {
+            // For v1 files, we need to compute block ranges from position encodings
+            // This is a compatibility fallback - we'll scan position encodings to find tile boundaries
+            // Note: This assumes position encodings are sorted by tile
+            matrix.tileBlockRanges.reserve(numTiles);
+            // We'll fill this after reading position encodings
+        }
+
         // Read position encodings
         matrix.positionEncodings.resize(numPositions);
         file.read(reinterpret_cast<char*>(matrix.positionEncodings.data()),
@@ -162,6 +187,22 @@ public:
         // Calculate derived values
         matrix.numPaddings = matrix.nnz - matrix.originalNnz;
 
+        // For v1 files, compute block ranges from position encodings
+        if (version == 1 && !matrix.tilePositions.empty()) {
+            // Simple heuristic: divide position encodings evenly among tiles
+            // This is a rough approximation for backward compatibility
+            uint32_t blocksPerTile = numPositions / numTiles;
+            uint32_t remainder = numPositions % numTiles;
+            uint32_t currentStart = 0;
+
+            for (uint32_t i = 0; i < numTiles; i++) {
+                uint32_t blockCount = blocksPerTile + (i < remainder ? 1 : 0);
+                uint32_t currentEnd = currentStart + blockCount;
+                matrix.tileBlockRanges.emplace_back(currentStart, currentEnd);
+                currentStart = currentEnd;
+            }
+        }
+
         return matrix;
     }
 };
@@ -176,6 +217,7 @@ inline uint64_t getSPASMFileSize(const SPASMMatrix& matrix) {
     size += 3 * sizeof(uint32_t);  // numTiles, numPositions, numTemplates
     size += matrix.templatePatterns.size() * sizeof(uint16_t);  // Template patterns
     size += matrix.tilePositions.size() * 2 * sizeof(uint32_t);  // Tile positions
+    size += matrix.tileBlockRanges.size() * 2 * sizeof(uint32_t);  // Tile block ranges (v2+)
     size += matrix.positionEncodings.size() * sizeof(PositionEncoding);  // Position encodings
     size += matrix.values.size() * sizeof(float);  // Values
     return size;

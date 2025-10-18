@@ -121,6 +121,10 @@ public:
         // Track unique tiles
         std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> uniqueTiles;
 
+        // Track tile block ranges - maps tileId to (startBlock, endBlock)
+        std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> tileBlockRangeMap;
+        uint32_t totalBlocksAdded = 0;  // Track total blocks added to spasm
+
         // Clear decomposition cache for new conversion
         CachedPatternDecomposer::clearCache();
 
@@ -142,15 +146,25 @@ public:
                     patternCount[currentPattern]++;
 
                     // Convert block to SPASM format
-                    processBlock(spasm, currentPattern, currentValues, templates,
-                               currentBlockRow, currentBlockCol, submatricesPerTile);
+                    uint32_t numAdded = processBlock(spasm, currentPattern, currentValues, templates,
+                                                    currentBlockRow, currentBlockCol, submatricesPerTile);
+                    totalBlocksAdded += numAdded;
                     blocksProcessed++;
                 }
 
                 // Check if we moved to a new tile
                 if (tileId != currentTileId) {
-                    // Record this tile
+                    // If we have a previous tile, record its end position
+                    if (currentTileId != UINT64_MAX) {
+                        auto it = tileBlockRangeMap.find(currentTileId);
+                        if (it != tileBlockRangeMap.end()) {
+                            it->second.second = totalBlocksAdded;  // Set end position
+                        }
+                    }
+
+                    // Record this tile and start its block range
                     uniqueTiles[tileId] = {entry.tileRow, entry.tileCol};
+                    tileBlockRangeMap[tileId] = {totalBlocksAdded, totalBlocksAdded};  // Start position
                     currentTileId = tileId;
                 }
 
@@ -171,18 +185,46 @@ public:
         // Don't forget the last block
         if (currentPattern != 0) {
             patternCount[currentPattern]++;
-            processBlock(spasm, currentPattern, currentValues, templates,
-                       currentBlockRow, currentBlockCol, submatricesPerTile);
+            uint32_t numAdded = processBlock(spasm, currentPattern, currentValues, templates,
+                                            currentBlockRow, currentBlockCol, submatricesPerTile);
+            totalBlocksAdded += numAdded;
             blocksProcessed++;
         }
 
-        // Step 3: Add tile positions to SPASM matrix
-        for (const auto& [tileId, tilePos] : uniqueTiles) {
-            spasm.tilePositions.emplace_back(tilePos.first, tilePos.second);
+        // Finalize the last tile's block range
+        if (currentTileId != UINT64_MAX) {
+            auto it = tileBlockRangeMap.find(currentTileId);
+            if (it != tileBlockRangeMap.end()) {
+                it->second.second = totalBlocksAdded;  // Set end position
+            }
         }
 
-        // Sort tile positions for better access pattern
-        std::sort(spasm.tilePositions.begin(), spasm.tilePositions.end());
+        // Step 3: Add tile positions and block ranges to SPASM matrix
+        // We need to maintain the same order for tile positions and block ranges
+        std::vector<std::pair<uint64_t, std::pair<uint32_t, uint32_t>>> sortedTiles;
+        for (const auto& [tileId, tilePos] : uniqueTiles) {
+            sortedTiles.push_back({tileId, tilePos});
+        }
+        // Sort by tile position for better access pattern
+        std::sort(sortedTiles.begin(), sortedTiles.end(),
+                  [](const auto& a, const auto& b) {
+                      if (a.second.first != b.second.first) return a.second.first < b.second.first;
+                      return a.second.second < b.second.second;
+                  });
+
+        // Add to SPASM matrix in sorted order
+        for (const auto& [tileId, tilePos] : sortedTiles) {
+            spasm.tilePositions.emplace_back(tilePos.first, tilePos.second);
+
+            // Add corresponding block range
+            auto rangeIt = tileBlockRangeMap.find(tileId);
+            if (rangeIt != tileBlockRangeMap.end()) {
+                spasm.tileBlockRanges.emplace_back(rangeIt->second.first, rangeIt->second.second);
+            } else {
+                // This shouldn't happen, but add empty range as fallback
+                spasm.tileBlockRanges.emplace_back(0, 0);
+            }
+        }
 
         // Step 4: Convert pattern counts to sorted vector for analysis
         result.patterns.reserve(patternCount.size());
@@ -200,6 +242,7 @@ public:
         if (verbose) {
             std::cout << "  Processed " << uniqueTiles.size() << " non-empty tiles\n";
             std::cout << "  Total blocks processed: " << blocksProcessed << "\n";
+            std::cout << "  Total position encodings added: " << totalBlocksAdded << "\n";
             std::cout << "  Unique patterns found: " << result.uniquePatternCount << "\n";
             std::cout << "  Cache size: " << CachedPatternDecomposer::getCacheSize() << " entries\n";
         }
@@ -263,7 +306,7 @@ public:
     }
 
 private:
-    static void processBlock(SPASMMatrix& spasm,
+    static uint32_t processBlock(SPASMMatrix& spasm,
                             PatternMask pattern,
                             const float values[16],
                             const std::vector<PatternMask>& templates,
@@ -280,6 +323,7 @@ private:
 
         // Track which positions have been covered by previous templates
         PatternMask covered = 0;
+        uint32_t positionsAdded = 0;
 
         // For each used template, create position encoding and values
         for (int t_id : usedTemplates) {
@@ -320,7 +364,10 @@ private:
 
             // Add to SPASM matrix
             spasm.addPositionWithValues(pos, template_values);
+            positionsAdded++;
         }
+
+        return positionsAdded;
     }
 };
 

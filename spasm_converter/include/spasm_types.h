@@ -49,6 +49,20 @@ inline uint32_t getTemplateId(PositionEncoding pos) {
     return (pos >> 28) & 0xF;
 }
 
+// Tile block range - stores the start and end position of block data for a tile
+struct TileBlockRange {
+    uint32_t blockStart;    // Starting index in positionEncodings array
+    uint32_t blockEnd;      // Ending index (exclusive) in positionEncodings array
+
+    TileBlockRange() : blockStart(0), blockEnd(0) {}
+    TileBlockRange(uint32_t start, uint32_t end) : blockStart(start), blockEnd(end) {}
+
+    // Get number of blocks in this tile
+    uint32_t getNumBlocks() const {
+        return blockEnd - blockStart;
+    }
+};
+
 // Global composition - tile-level COO format
 struct TilePosition {
     uint32_t tileRowIdx;
