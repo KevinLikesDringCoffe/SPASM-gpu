@@ -4,10 +4,10 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
-#include "../include/mtx_reader.h"
-#include "../include/spasm_io.h"
-#include "../include/spmv_coo.h"
-#include "../include/spmv_spasm.h"
+#include "../include/io/mtx_reader.h"
+#include "../include/io/spasm_io.h"
+#include "../include/spmv/coo.h"
+#include "../include/spmv/spasm.h"
 
 using namespace std;
 using namespace chrono;

@@ -4,8 +4,8 @@
 #include <sstream>
 #include <vector>
 #include <bitset>
-#include "../include/spasm_io.h"
-#include "../include/template_selection.h"
+#include "../include/io/spasm_io.h"
+#include "../include/core/template_patterns.h"
 
 using namespace spasm;
 

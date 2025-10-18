@@ -7,10 +7,10 @@
 #include <bitset>
 #include <algorithm>
 #include <sstream>
-#include "../include/mtx_reader.h"
-#include "../include/spasm_io.h"
-#include "../include/template_selection.h"
-#include "../include/optimized_converter_v2.h"
+#include "../include/io/mtx_reader.h"
+#include "../include/io/spasm_io.h"
+#include "../include/core/template_patterns.h"
+#include "../include/converter/converter.h"
 
 namespace fs = std::filesystem;
 using namespace spasm;
@@ -150,19 +150,31 @@ void printUsage(const char* progName) {
     Format::printHeader("SPASM Converter Usage");
     std::cout << "Usage: " << progName << " <input.mtx> [options]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  -o <output.spasm>  : Output file (default: input.spasm)\n";
-    std::cout << "  -t <tile_size>     : Tile size (default: 1024)\n";
-    std::cout << "  -s <set_id>        : Template set ID 0-5 (default: 0)\n";
-    std::cout << "  -k <top_k>         : Visualize top-k patterns (default: 8)\n";
-    std::cout << "  -v                 : Verbose output\n";
-    std::cout << "  -verify            : Verify conversion\n";
-    std::cout << "  -h                 : Show this help\n";
+    std::cout << "  -o <output.spasm>          : Output file (default: input.spasm)\n";
+    std::cout << "  --tile-size <N>            : Tile size (default: 1024)\n";
+    std::cout << "  --template-set <0-5>       : Template set ID (default: 0)\n";
+    std::cout << "  --show-patterns <N>        : Display top N patterns (default: 8)\n";
+    std::cout << "  -t <N>                     : Short for --tile-size\n";
+    std::cout << "  -s <0-5>                   : Short for --template-set\n";
+    std::cout << "  -k <N>                     : Short for --show-patterns\n";
+    std::cout << "  -v, --verbose              : Verbose output\n";
+    std::cout << "  --verify                   : Verify conversion\n";
+    std::cout << "  -h, --help                 : Show this help\n";
 }
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         printUsage(argv[0]);
         return 1;
+    }
+
+    // Check for help flag first
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            printUsage(argv[0]);
+            return 0;
+        }
     }
 
     // Parse arguments
@@ -178,19 +190,16 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "-o" && i + 1 < argc) {
             outputFile = argv[++i];
-        } else if (arg == "-t" && i + 1 < argc) {
+        } else if ((arg == "-t" || arg == "--tile-size") && i + 1 < argc) {
             tileSize = std::stoi(argv[++i]);
-        } else if (arg == "-s" && i + 1 < argc) {
+        } else if ((arg == "-s" || arg == "--template-set") && i + 1 < argc) {
             templateSetId = std::stoi(argv[++i]);
-        } else if (arg == "-k" && i + 1 < argc) {
+        } else if ((arg == "-k" || arg == "--show-patterns") && i + 1 < argc) {
             topK = std::stoi(argv[++i]);
-        } else if (arg == "-v") {
+        } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
-        } else if (arg == "-verify") {
+        } else if (arg == "--verify") {
             verify = true;
-        } else if (arg == "-h") {
-            printUsage(argv[0]);
-            return 0;
         }
     }
 
