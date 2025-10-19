@@ -122,7 +122,7 @@ void compareSpMV(const string& mtxFile, const string& spasmFile) {
 
     // Print matrix information
     cout << "┌──────────────────────────────────────────────────────────────────────┐\n";
-    cout << "│ Matrix Properties                                                     │\n";
+    cout << "│ Matrix Properties                                                    │\n";
     cout << "└──────────────────────────────────────────────────────────────────────┘\n";
     cout << "  • Dimensions:        " << rows << " × " << cols << "\n";
     cout << "  • Non-zeros:         " << spasmCooData.nnz << "\n";
@@ -138,7 +138,7 @@ void compareSpMV(const string& mtxFile, const string& spasmFile) {
 
     // Step 4: Perform COO SpMV
     cout << "┌──────────────────────────────────────────────────────────────────────┐\n";
-    cout << "│ Running SpMV Benchmarks                                               │\n";
+    cout << "│ Running SpMV Benchmarks                                              │\n";
     cout << "└──────────────────────────────────────────────────────────────────────┘\n";
 
     vector<float> y_coo(rows, 0.0f);
@@ -179,7 +179,7 @@ void compareSpMV(const string& mtxFile, const string& spasmFile) {
     auto comparison = compareVectors(y_coo, y_spasm);
 
     cout << "┌──────────────────────────────────────────────────────────────────────┐\n";
-    cout << "│ Accuracy Verification                                                 │\n";
+    cout << "│ Accuracy Verification                                                │\n";
     cout << "└──────────────────────────────────────────────────────────────────────┘\n";
     cout << "  • Max absolute error:  " << scientific << setprecision(3)
          << comparison.maxAbsError << "\n";
@@ -189,7 +189,7 @@ void compareSpMV(const string& mtxFile, const string& spasmFile) {
 
     // Step 7: Performance summary
     cout << "┌──────────────────────────────────────────────────────────────────────┐\n";
-    cout << "│ Performance Summary                                                   │\n";
+    cout << "│ Performance Summary                                                  │\n";
     cout << "└──────────────────────────────────────────────────────────────────────┘\n";
 
     cout << fixed << setprecision(2);
