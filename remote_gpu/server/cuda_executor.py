@@ -1,15 +1,34 @@
 import pycuda.driver as cuda
-import pycuda.autoinit
 import numpy as np
 import time
 from typing import Dict, Any, Tuple
+import threading
 
 
 class CUDAExecutor:
     """Execute CUDA kernels with timing information"""
 
+    _local = threading.local()
+
     def __init__(self):
-        self.context = pycuda.autoinit.context
+        pass
+
+    @staticmethod
+    def _get_context():
+        """Get or create CUDA context for current thread"""
+        if not hasattr(CUDAExecutor._local, 'context'):
+            # Initialize CUDA driver
+            cuda.init()
+            # Create context for device 0
+            device = cuda.Device(0)
+            CUDAExecutor._local.context = device.make_context()
+        return CUDAExecutor._local.context
+
+    @staticmethod
+    def _ensure_context():
+        """Ensure CUDA context is active for current thread"""
+        ctx = CUDAExecutor._get_context()
+        ctx.push()
 
     def execute_spmv_csr(self, kernel_data: bytes, matrix_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -33,6 +52,9 @@ class CUDAExecutor:
                 - transfer_time_ms: data transfer time in milliseconds
                 - total_time_ms: total time including transfers
         """
+        # Ensure CUDA context is active for this thread
+        self._ensure_context()
+
         start_total = time.perf_counter()
 
         # Extract matrix data
@@ -120,6 +142,10 @@ class CUDAExecutor:
 
         end_total = time.perf_counter()
         total_time = (end_total - start_total) * 1000
+
+        # Pop context after execution
+        ctx = self._get_context()
+        ctx.pop()
 
         return {
             'y': y.tolist(),

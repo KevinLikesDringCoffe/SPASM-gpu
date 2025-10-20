@@ -130,6 +130,8 @@ def info():
     try:
         import pycuda.driver as cuda
 
+        # Initialize CUDA driver if not already done
+        cuda.init()
         device = cuda.Device(0)
         attrs = device.get_attributes()
 
