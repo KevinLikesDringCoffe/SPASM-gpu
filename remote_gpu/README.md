@@ -59,6 +59,16 @@ remote_gpu/
    pip install -r requirements.txt
    ```
 
+3. **Configure client**:
+   ```bash
+   # Copy example env file
+   cp .env.example .env
+
+   # Edit .env file with your settings
+   # GPU_SERVER_URL=http://120.25.194.125:2110
+   # GPU_API_KEY=your-secret-api-key-here
+   ```
+
 ### On GPU Server
 
 1. **Verify NVIDIA driver and CUDA**:
@@ -75,10 +85,13 @@ remote_gpu/
 
 3. **Configure the service**:
    ```bash
-   # Create .env file or set environment variables
-   export GPU_SERVICE_HOST=0.0.0.0
-   export GPU_SERVICE_PORT=5000
-   export GPU_SERVICE_API_KEY=your-secret-api-key-here
+   # Copy example env file
+   cp .env.example .env
+
+   # Edit .env file with your settings
+   # GPU_SERVICE_HOST=0.0.0.0
+   # GPU_SERVICE_PORT=5910
+   # GPU_SERVICE_API_KEY=your-secret-api-key-here
    ```
 
 4. **Start the service**:
@@ -89,7 +102,7 @@ remote_gpu/
    For production, use gunicorn:
    ```bash
    pip install gunicorn
-   gunicorn -w 4 -b 0.0.0.0:5000 gpu_service:app
+   gunicorn -w 4 -b 0.0.0.0:5910 --timeout 300 gpu_service:app
    ```
 
 ## Usage
@@ -101,11 +114,8 @@ On the coding machine:
 ```bash
 cd remote_gpu/client
 
-# Set server URL and API key
-export GPU_SERVER_URL=http://your-gpu-server:5000
-export GPU_API_KEY=your-secret-api-key-here
-
-# Run example
+# Make sure .env file is configured
+# Then run example
 python example_spmv.py
 ```
 

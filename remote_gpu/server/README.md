@@ -16,16 +16,19 @@ python -c "import pycuda.autoinit; print('GPU OK')"
 
 ### Configuration
 
-Environment variables (optional):
+Create a `.env` file from the example:
 ```bash
-export GPU_SERVICE_HOST=0.0.0.0        # Bind address
-export GPU_SERVICE_PORT=5000           # Port
-export GPU_SERVICE_API_KEY=secret-key  # API key for authentication
-export GPU_SERVICE_REQUIRE_AUTH=True   # Enable/disable auth
-export GPU_SERVICE_DEBUG=False         # Debug mode
+cp .env.example .env
 ```
 
-Or edit `config.py` directly.
+Edit `.env` file:
+```bash
+GPU_SERVICE_HOST=0.0.0.0        # Bind address
+GPU_SERVICE_PORT=5910           # Port (must match port forwarding)
+GPU_SERVICE_API_KEY=secret-key  # API key for authentication
+GPU_SERVICE_REQUIRE_AUTH=True   # Enable/disable auth
+GPU_SERVICE_DEBUG=False         # Debug mode
+```
 
 ### Running the Service
 
@@ -37,7 +40,7 @@ python gpu_service.py
 **Production (with gunicorn):**
 ```bash
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 --timeout 300 gpu_service:app
+gunicorn -w 4 -b 0.0.0.0:5910 --timeout 300 gpu_service:app
 ```
 
 **As a systemd service:**

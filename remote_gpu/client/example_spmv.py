@@ -6,6 +6,12 @@ Example script demonstrating remote GPU execution for SpMV
 import numpy as np
 from remote_client import RemoteGPUClient
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 
 def generate_test_matrix_csr(num_rows, num_cols, density=0.01):
@@ -40,8 +46,8 @@ def generate_test_matrix_csr(num_rows, num_cols, density=0.01):
 
 
 def main():
-    # Configuration
-    SERVER_URL = os.environ.get('GPU_SERVER_URL', 'http://localhost:5000')
+    # Configuration from .env file
+    SERVER_URL = os.environ.get('GPU_SERVER_URL', 'http://120.25.194.125:2110')
     API_KEY = os.environ.get('GPU_API_KEY', 'your-secret-api-key-change-this')
 
     print("=" * 60)

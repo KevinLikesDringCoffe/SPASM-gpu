@@ -1,4 +1,10 @@
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from current directory
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 
 class Config:
@@ -6,7 +12,7 @@ class Config:
 
     # Server settings
     HOST = os.environ.get('GPU_SERVICE_HOST', '0.0.0.0')
-    PORT = int(os.environ.get('GPU_SERVICE_PORT', 5000))
+    PORT = int(os.environ.get('GPU_SERVICE_PORT', 5910))
     DEBUG = os.environ.get('GPU_SERVICE_DEBUG', 'False').lower() == 'true'
 
     # Authentication
