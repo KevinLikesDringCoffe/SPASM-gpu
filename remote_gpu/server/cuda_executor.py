@@ -3,7 +3,7 @@ import numpy as np
 import time
 from typing import Dict, Any, Tuple
 import threading
-import atexit
+import weakref
 
 
 class CUDAExecutor:
@@ -12,6 +12,7 @@ class CUDAExecutor:
     _local = threading.local()
     _initialized = False
     _lock = threading.Lock()
+    _contexts = []  # Keep track of all contexts for cleanup
 
     def __init__(self):
         self._ensure_cuda_initialized()
@@ -27,24 +28,39 @@ class CUDAExecutor:
     @classmethod
     def _get_or_create_context(cls):
         """Get or create CUDA context for current thread"""
-        if not hasattr(cls._local, 'context'):
+        if not hasattr(cls._local, 'context') or cls._local.context is None:
             cls._ensure_cuda_initialized()
             device = cuda.Device(0)
-            cls._local.context = device.make_context()
+            # Create context (this automatically pushes it to the stack)
+            ctx = device.make_context()
+            # Pop it immediately so we can manage it manually
+            ctx.pop()
+            # Store context reference for cleanup
+            with cls._lock:
+                cls._contexts.append(weakref.ref(ctx))
+            cls._local.context = ctx
             cls._local.device = device
-            # Register cleanup for this thread
-            atexit.register(cls._cleanup_context)
+            cls._local.context_pushed = False
         return cls._local.context
 
     @classmethod
-    def _cleanup_context(cls):
-        """Cleanup CUDA context for current thread"""
-        if hasattr(cls._local, 'context'):
-            try:
-                cls._local.context.pop()
-                cls._local.context.detach()
-            except:
-                pass
+    def cleanup_all_contexts(cls):
+        """Clean up all CUDA contexts - call this on shutdown"""
+        with cls._lock:
+            for ctx_ref in cls._contexts:
+                ctx = ctx_ref()
+                if ctx is not None:
+                    try:
+                        # Pop all contexts from stack
+                        while True:
+                            try:
+                                cuda.Context.pop()
+                            except cuda.LogicError:
+                                break
+                        ctx.detach()
+                    except:
+                        pass
+            cls._contexts.clear()
 
     def execute_spmv_csr(self, kernel_data: bytes, matrix_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -70,6 +86,9 @@ class CUDAExecutor:
         """
         # Get or create CUDA context for this thread
         ctx = self._get_or_create_context()
+
+        # Push context to make it active
+        ctx.push()
 
         try:
             start_total = time.perf_counter()
@@ -172,5 +191,7 @@ class CUDAExecutor:
                 'nnz': nnz
             }
         except Exception as e:
-            # Make sure to clean up on error
             raise
+        finally:
+            # Always pop context after execution
+            ctx.pop()

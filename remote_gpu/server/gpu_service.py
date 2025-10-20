@@ -155,11 +155,20 @@ def info():
 
 
 if __name__ == '__main__':
+    import atexit
+
+    # Register cleanup function
+    atexit.register(CUDAExecutor.cleanup_all_contexts)
+
     logger.info("Starting GPU Execution Service")
     logger.info(f"Authentication: {'enabled' if Config.REQUIRE_AUTH else 'disabled'}")
 
-    app.run(
-        host=Config.HOST,
-        port=Config.PORT,
-        debug=Config.DEBUG
-    )
+    try:
+        app.run(
+            host=Config.HOST,
+            port=Config.PORT,
+            debug=Config.DEBUG
+        )
+    finally:
+        # Clean up CUDA contexts
+        CUDAExecutor.cleanup_all_contexts()
