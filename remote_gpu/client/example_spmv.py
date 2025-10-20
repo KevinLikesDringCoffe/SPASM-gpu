@@ -96,8 +96,8 @@ def main():
     print(f"\n5. Executing SpMV on remote GPU...")
     result = client.compile_and_execute_spmv(
         kernel_path,
-        matrix_data,
-        arch='sm_70'  # Change to match your GPU architecture
+        matrix_data
+        # arch is auto-detected from server GPU
     )
 
     # Display results

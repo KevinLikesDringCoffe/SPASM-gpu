@@ -45,21 +45,45 @@ class RemoteGPUClient:
             print(f"Failed to get GPU info: {e}")
             return None
 
+    def get_server_arch(self) -> Optional[str]:
+        """
+        Get server GPU architecture from compute capability
+
+        Returns:
+            Architecture string like "sm_75" or None if failed
+        """
+        info = self.get_gpu_info()
+        if info and 'compute_capability' in info:
+            cc = info['compute_capability']
+            # Convert [7, 5] to "sm_75"
+            if isinstance(cc, list) and len(cc) == 2:
+                return f"sm_{cc[0]}{cc[1]}"
+        return None
+
     def compile_cuda_kernel(self, cu_file: str, output_cubin: Optional[str] = None,
-                           arch: str = "sm_70") -> str:
+                           arch: Optional[str] = None) -> str:
         """
         Compile CUDA kernel to cubin format
 
         Args:
             cu_file: Path to .cu source file
             output_cubin: Output cubin file path (optional, default: same name as .cu)
-            arch: GPU architecture (default: sm_70 for V100/T4)
+            arch: GPU architecture (optional, auto-detected from server if None)
 
         Returns:
             Path to compiled cubin file
         """
         if not os.path.exists(cu_file):
             raise FileNotFoundError(f"CUDA source file not found: {cu_file}")
+
+        # Auto-detect architecture from server if not specified
+        if arch is None:
+            arch = self.get_server_arch()
+            if arch:
+                print(f"Auto-detected server GPU architecture: {arch}")
+            else:
+                print("Warning: Could not auto-detect GPU architecture, using sm_70")
+                arch = "sm_70"
 
         if output_cubin is None:
             output_cubin = cu_file.replace('.cu', '.cubin')
@@ -73,7 +97,7 @@ class RemoteGPUClient:
             '-o', output_cubin
         ]
 
-        print(f"Compiling {cu_file} -> {output_cubin}")
+        print(f"Compiling {cu_file} -> {output_cubin} (arch={arch})")
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
@@ -149,19 +173,19 @@ class RemoteGPUClient:
         return result['result']
 
     def compile_and_execute_spmv(self, cu_file: str, matrix_data: Dict[str, Any],
-                                 arch: str = "sm_70") -> Dict[str, Any]:
+                                 arch: Optional[str] = None) -> Dict[str, Any]:
         """
         Compile CUDA kernel and execute SpMV in one call
 
         Args:
             cu_file: Path to .cu source file
             matrix_data: Matrix data dictionary (see execute_spmv_csr)
-            arch: GPU architecture
+            arch: GPU architecture (optional, auto-detected from server if None)
 
         Returns:
             Execution result dictionary
         """
-        # Compile kernel
+        # Compile kernel (auto-detects arch if not specified)
         cubin_file = self.compile_cuda_kernel(cu_file, arch=arch)
 
         # Execute on remote GPU
