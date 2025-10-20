@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import base64
 import msgpack
 from cuda_executor import CUDAExecutor
+from mtx_utils import MTXConverter
 import logging
 from config import Config
 
@@ -12,6 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 executor = CUDAExecutor()
+mtx_converter = MTXConverter()
 
 
 def verify_api_key():
@@ -149,6 +151,197 @@ def info():
         })
 
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/upload_mtx', methods=['POST'])
+def upload_mtx():
+    """
+    Upload MTX file to server
+
+    Request format (multipart/form-data or JSON):
+    - If multipart: file field with MTX file
+    - If JSON: {"filename": str, "content": base64-encoded content}
+
+    Response:
+    {
+        "success": bool,
+        "filename": str,
+        "info": {
+            "num_rows": int,
+            "num_cols": int,
+            "nnz": int,
+            "exists": bool
+        }
+    }
+    """
+    if not verify_api_key():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized: Invalid API key'
+        }), 401
+
+    try:
+        # Handle multipart form data
+        if 'file' in request.files:
+            file = request.files['file']
+            filename = file.filename
+            content = file.read()
+        # Handle JSON with base64 content
+        elif request.json:
+            data = request.json
+            filename = data.get('filename')
+            content_b64 = data.get('content')
+            content = base64.b64decode(content_b64)
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No file or data provided'
+            }), 400
+
+        # Save MTX file
+        mtx_converter.save_mtx_file(filename, content)
+
+        # Get matrix info
+        info = mtx_converter.get_matrix_info(filename)
+
+        logger.info(f"Uploaded MTX file: {filename} ({info['num_rows']}x{info['num_cols']}, nnz={info['nnz']})")
+
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'info': info
+        })
+
+    except Exception as e:
+        logger.error(f"Error uploading MTX: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/check_mtx/<filename>', methods=['GET'])
+def check_mtx(filename):
+    """Check if MTX file exists on server"""
+    if not verify_api_key():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized: Invalid API key'
+        }), 401
+
+    try:
+        info = mtx_converter.get_matrix_info(filename)
+
+        if info:
+            return jsonify({
+                'success': True,
+                'exists': True,
+                'info': info
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'exists': False
+            })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/list_mtx', methods=['GET'])
+def list_mtx():
+    """List all cached MTX files"""
+    if not verify_api_key():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized: Invalid API key'
+        }), 401
+
+    try:
+        matrices = mtx_converter.list_cached_matrices()
+        return jsonify({
+            'success': True,
+            'matrices': matrices
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/execute_spmv_mtx', methods=['POST'])
+def execute_spmv_mtx():
+    """
+    Execute SpMV using MTX file
+
+    Request format (JSON):
+    {
+        "kernel": "base64-encoded cubin file",
+        "mtx_filename": "matrix.mtx",
+        "x": [float array - input vector]
+    }
+
+    Response: Same as execute_spmv
+    """
+    if not verify_api_key():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized: Invalid API key'
+        }), 401
+
+    try:
+        data = request.json
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid request: empty data'
+            }), 400
+
+        kernel_b64 = data.get('kernel')
+        mtx_filename = data.get('mtx_filename')
+        x = data.get('x')
+
+        if not kernel_b64 or not mtx_filename or not x:
+            return jsonify({
+                'success': False,
+                'error': 'Missing kernel, mtx_filename, or x'
+            }), 400
+
+        # Decode kernel
+        kernel_binary = base64.b64decode(kernel_b64)
+
+        # Convert MTX to CSR (uses cache if available)
+        logger.info(f"Loading MTX file: {mtx_filename}")
+        csr_data = mtx_converter.convert_mtx_to_csr(mtx_filename)
+
+        # Add input vector
+        csr_data['x'] = x
+
+        logger.info(f"Executing SpMV: rows={csr_data['num_rows']}, "
+                   f"cols={csr_data['num_cols']}, nnz={csr_data['nnz']}")
+
+        # Execute on GPU
+        result = executor.execute_spmv_csr(kernel_binary, csr_data)
+
+        logger.info(f"Execution completed: {result['execution_time_ms']:.3f} ms, "
+                   f"{result['gflops']:.2f} GFLOPS")
+
+        return jsonify({
+            'success': True,
+            'result': result
+        })
+
+    except Exception as e:
+        logger.error(f"Error executing SpMV with MTX: {str(e)}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)

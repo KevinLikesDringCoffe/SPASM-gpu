@@ -2,6 +2,15 @@
 
 A client-server system for executing CUDA kernels on a remote GPU server. This is designed for scenarios where you have a development machine without GPU and a separate GPU server.
 
+## Features
+
+- ✅ Remote CUDA kernel execution
+- ✅ Automatic GPU architecture detection
+- ✅ **MTX file support** with server-side caching
+- ✅ Performance metrics (GFLOPS, timing)
+- ✅ CSR format SpMV acceleration
+- ✅ API key authentication
+
 ## Architecture
 
 ```
@@ -107,16 +116,48 @@ remote_gpu/
 
 ## Usage
 
-### Quick Start Example
+### Quick Start (Command-Line)
 
-On the coding machine:
+The simplest way to use the service:
 
 ```bash
 cd remote_gpu/client
 
-# Make sure .env file is configured
-# Then run example
+# Configure .env file first
+cp .env.example .env
+# Edit .env with your server URL and API key
+
+# Run SpMV with any MTX file
+python spmv_mtx.py your_matrix.mtx
+```
+
+**That's it!** The script handles everything automatically:
+- ✅ Upload MTX file (only if not cached on server)
+- ✅ Compile CUDA kernel with correct GPU architecture
+- ✅ Execute SpMV and display results
+
+See [client/README.md](client/README.md) for detailed command-line options.
+
+### Generate Test Matrix
+
+```bash
+# Generate a random sparse matrix
+python generate_mtx.py test.mtx --size 1000 --density 0.01
+
+# Run SpMV
+python spmv_mtx.py test.mtx
+```
+
+### Example Scripts (Optional)
+
+Full-featured examples for learning:
+
+```bash
+# Example 1: Basic SpMV with generated data
 python example_spmv.py
+
+# Example 2: MTX workflow demonstration
+python example_mtx.py
 ```
 
 ### Using the Client Library
@@ -161,8 +202,34 @@ result = client.compile_and_execute_spmv(
 # Get results
 y = result['y']
 exec_time = result['execution_time_ms']
+gflops = result['gflops']
 print(f"Execution time: {exec_time:.3f} ms")
+print(f"Throughput: {gflops:.2f} GFLOPS")
 ```
+
+### Using MTX Files
+
+```python
+from remote_client import RemoteGPUClient
+
+client = RemoteGPUClient("http://gpu-server:5000", "api-key")
+
+# One-step: upload MTX (if not cached), compile, and execute
+result = client.upload_and_execute_spmv(
+    cu_file="kernels/simple_spmv.cu",
+    mtx_file="path/to/matrix.mtx"
+)
+
+print(f"Throughput: {result['gflops']:.2f} GFLOPS")
+
+# Check what matrices are cached on server
+matrices = client.list_mtx_files()
+for mat in matrices:
+    print(f"{mat['filename']}: {mat['num_rows']}x{mat['num_cols']}")
+```
+
+See [MTX_USAGE.md](MTX_USAGE.md) for detailed MTX file documentation.
+
 
 ## API Endpoints
 

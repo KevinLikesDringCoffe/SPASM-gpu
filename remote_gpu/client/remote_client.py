@@ -192,3 +192,185 @@ class RemoteGPUClient:
         result = self.execute_spmv_csr(cubin_file, matrix_data)
 
         return result
+
+    def check_mtx_exists(self, mtx_filename: str) -> Dict[str, Any]:
+        """
+        Check if MTX file exists on server
+
+        Args:
+            mtx_filename: Name of MTX file
+
+        Returns:
+            Dictionary with exists flag and matrix info if exists
+        """
+        response = self.session.get(
+            f"{self.server_url}/check_mtx/{mtx_filename}",
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Server error: {response.text}")
+
+        result = response.json()
+        if not result.get('success'):
+            raise RuntimeError(f"Check failed: {result.get('error')}")
+
+        return result
+
+    def upload_mtx_file(self, mtx_file_path: str) -> Dict[str, Any]:
+        """
+        Upload MTX file to server
+
+        Args:
+            mtx_file_path: Path to MTX file
+
+        Returns:
+            Dictionary with upload result and matrix info
+        """
+        if not os.path.exists(mtx_file_path):
+            raise FileNotFoundError(f"MTX file not found: {mtx_file_path}")
+
+        filename = os.path.basename(mtx_file_path)
+
+        # Read and encode file
+        with open(mtx_file_path, 'rb') as f:
+            content = f.read()
+
+        content_b64 = base64.b64encode(content).decode('ascii')
+
+        # Send to server
+        print(f"Uploading MTX file: {filename}")
+        response = self.session.post(
+            f"{self.server_url}/upload_mtx",
+            json={
+                'filename': filename,
+                'content': content_b64
+            },
+            timeout=60
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Server error: {response.text}")
+
+        result = response.json()
+        if not result.get('success'):
+            raise RuntimeError(f"Upload failed: {result.get('error')}")
+
+        print(f"Upload successful: {result['info']['num_rows']}x{result['info']['num_cols']}, "
+              f"nnz={result['info']['nnz']}")
+
+        return result
+
+    def list_mtx_files(self) -> list:
+        """
+        List all cached MTX files on server
+
+        Returns:
+            List of matrix information dictionaries
+        """
+        response = self.session.get(
+            f"{self.server_url}/list_mtx",
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Server error: {response.text}")
+
+        result = response.json()
+        if not result.get('success'):
+            raise RuntimeError(f"List failed: {result.get('error')}")
+
+        return result.get('matrices', [])
+
+    def execute_spmv_mtx(self, cubin_file: str, mtx_filename: str,
+                        x: np.ndarray) -> Dict[str, Any]:
+        """
+        Execute SpMV using MTX file on server
+
+        Args:
+            cubin_file: Path to compiled cubin file
+            mtx_filename: Name of MTX file on server
+            x: Input vector (numpy array)
+
+        Returns:
+            Execution result dictionary
+        """
+        # Read cubin file
+        with open(cubin_file, 'rb') as f:
+            kernel_binary = f.read()
+
+        # Encode kernel as base64
+        kernel_b64 = base64.b64encode(kernel_binary).decode('ascii')
+
+        # Convert numpy array to list if needed
+        if isinstance(x, np.ndarray):
+            x_list = x.tolist()
+        else:
+            x_list = x
+
+        # Prepare request
+        request_data = {
+            'kernel': kernel_b64,
+            'mtx_filename': mtx_filename,
+            'x': x_list
+        }
+
+        # Send request
+        print(f"Executing SpMV with MTX file: {mtx_filename}")
+
+        response = self.session.post(
+            f"{self.server_url}/execute_spmv_mtx",
+            json=request_data,
+            timeout=300
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Server error: {response.text}")
+
+        result = response.json()
+
+        if not result.get('success'):
+            raise RuntimeError(f"Execution failed: {result.get('error')}")
+
+        return result['result']
+
+    def upload_and_execute_spmv(self, cu_file: str, mtx_file: str,
+                                x: Optional[np.ndarray] = None,
+                                arch: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Complete workflow: upload MTX if needed, compile kernel, and execute SpMV
+
+        Args:
+            cu_file: Path to CUDA kernel source
+            mtx_file: Path to MTX file
+            x: Input vector (optional, will generate random if None)
+            arch: GPU architecture (optional, auto-detected if None)
+
+        Returns:
+            Execution result dictionary
+        """
+        mtx_filename = os.path.basename(mtx_file)
+
+        # Check if MTX exists on server
+        check_result = self.check_mtx_exists(mtx_filename)
+
+        if check_result['exists']:
+            print(f"MTX file already exists on server: {mtx_filename}")
+            info = check_result['info']
+        else:
+            # Upload MTX file
+            upload_result = self.upload_mtx_file(mtx_file)
+            info = upload_result['info']
+
+        # Generate input vector if not provided
+        if x is None:
+            print(f"Generating random input vector (size={info['num_cols']})")
+            x = np.random.randn(info['num_cols']).astype(np.float32)
+
+        # Compile kernel
+        cubin_file = self.compile_cuda_kernel(cu_file, arch=arch)
+
+        # Execute SpMV
+        result = self.execute_spmv_mtx(cubin_file, mtx_filename, x)
+
+        return result
