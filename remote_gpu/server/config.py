@@ -20,4 +20,4 @@ class Config:
     API_KEY = os.environ.get('GPU_SERVICE_API_KEY', 'your-secret-api-key-change-this')
 
     # Request limits
-    MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500 MB max request size
+    MAX_CONTENT_LENGTH = 2 * 1024 * 1024 * 1024  # 2 GB max request size

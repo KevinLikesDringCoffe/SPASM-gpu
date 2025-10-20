@@ -285,9 +285,10 @@ def execute_spmv_mtx():
 
     Request format (JSON):
     {
-        "kernel": "base64-encoded cubin file",
+        "kernel": "base64-encoded cubin file" (optional if method='cusparse'),
         "mtx_filename": "matrix.mtx",
-        "x": [float array - input vector]
+        "x": [float array - input vector],
+        "method": "custom" or "cusparse" (default: "custom")
     }
 
     Response: Same as execute_spmv
@@ -306,18 +307,15 @@ def execute_spmv_mtx():
                 'error': 'Invalid request: empty data'
             }), 400
 
-        kernel_b64 = data.get('kernel')
         mtx_filename = data.get('mtx_filename')
         x = data.get('x')
+        method = data.get('method', 'custom')
 
-        if not kernel_b64 or not mtx_filename or not x:
+        if not mtx_filename or not x:
             return jsonify({
                 'success': False,
-                'error': 'Missing kernel, mtx_filename, or x'
+                'error': 'Missing mtx_filename or x'
             }), 400
-
-        # Decode kernel
-        kernel_binary = base64.b64decode(kernel_b64)
 
         # Convert MTX to CSR (uses cache if available)
         logger.info(f"Loading MTX file: {mtx_filename}")
@@ -326,14 +324,27 @@ def execute_spmv_mtx():
         # Add input vector
         csr_data['x'] = x
 
-        logger.info(f"Executing SpMV: rows={csr_data['num_rows']}, "
+        logger.info(f"Executing SpMV ({method}): rows={csr_data['num_rows']}, "
                    f"cols={csr_data['num_cols']}, nnz={csr_data['nnz']}")
 
-        # Execute on GPU
-        result = executor.execute_spmv_csr(kernel_binary, csr_data)
+        # Execute on GPU based on method
+        if method == 'cusparse':
+            result = executor.execute_spmv_cusparse(csr_data)
+        else:
+            # Custom kernel method
+            kernel_b64 = data.get('kernel')
+            if not kernel_b64:
+                return jsonify({
+                    'success': False,
+                    'error': 'Missing kernel for custom method'
+                }), 400
 
-        logger.info(f"Execution completed: {result['execution_time_ms']:.3f} ms, "
-                   f"{result['gflops']:.2f} GFLOPS")
+            kernel_binary = base64.b64decode(kernel_b64)
+            result = executor.execute_spmv_csr(kernel_binary, csr_data)
+            result['method'] = 'custom'
+
+        logger.info(f"Execution completed ({result.get('method', method)}): "
+                   f"{result['execution_time_ms']:.3f} ms, {result['gflops']:.2f} GFLOPS")
 
         return jsonify({
             'success': True,

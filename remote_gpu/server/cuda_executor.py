@@ -5,6 +5,14 @@ from typing import Dict, Any
 import threading
 import weakref
 
+# Try to import cupy for cuSPARSE support
+try:
+    import cupy as cp
+    import cupyx.scipy.sparse as cusparse
+    CUPY_AVAILABLE = True
+except ImportError:
+    CUPY_AVAILABLE = False
+
 
 class CUDAExecutor:
     """Execute CUDA kernels with timing information"""
@@ -201,3 +209,85 @@ class CUDAExecutor:
         finally:
             # Always pop context after execution
             ctx.pop()
+
+    def execute_spmv_cusparse(self, matrix_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute CSR SpMV using cuSPARSE (baseline)
+
+        Args:
+            matrix_data: Dictionary containing CSR format data
+
+        Returns:
+            Dictionary with execution results
+        """
+        if not CUPY_AVAILABLE:
+            raise RuntimeError("CuPy not available. Install with: pip install cupy-cuda11x or cupy-cuda12x")
+
+        start_total = time.perf_counter()
+
+        # Extract matrix data
+        num_rows = matrix_data['num_rows']
+        num_cols = matrix_data['num_cols']
+        nnz = matrix_data['nnz']
+
+        values = np.array(matrix_data['values'], dtype=np.float32)
+        col_indices = np.array(matrix_data['col_indices'], dtype=np.int32)
+        row_ptr = np.array(matrix_data['row_ptr'], dtype=np.int32)
+        x = np.array(matrix_data['x'], dtype=np.float32)
+
+        # Transfer data to GPU
+        start_transfer = time.perf_counter()
+
+        values_gpu = cp.array(values)
+        col_indices_gpu = cp.array(col_indices)
+        row_ptr_gpu = cp.array(row_ptr)
+        x_gpu = cp.array(x)
+
+        end_transfer = time.perf_counter()
+        transfer_time_h2d = (end_transfer - start_transfer) * 1000
+
+        # Create CSR matrix using cuSPARSE
+        csr_matrix = cusparse.csr_matrix(
+            (values_gpu, col_indices_gpu, row_ptr_gpu),
+            shape=(num_rows, num_cols)
+        )
+
+        # Warm-up run
+        y_gpu = csr_matrix.dot(x_gpu)
+        cp.cuda.Stream.null.synchronize()
+
+        # Timed execution
+        start_kernel = time.perf_counter()
+
+        y_gpu = csr_matrix.dot(x_gpu)
+        cp.cuda.Stream.null.synchronize()
+
+        end_kernel = time.perf_counter()
+        execution_time = (end_kernel - start_kernel) * 1000
+
+        # Transfer result back
+        start_transfer_back = time.perf_counter()
+        y = cp.asnumpy(y_gpu)
+        end_transfer_back = time.perf_counter()
+        transfer_time_d2h = (end_transfer_back - start_transfer_back) * 1000
+
+        end_total = time.perf_counter()
+        total_time = (end_total - start_total) * 1000
+
+        # Calculate throughput
+        flops = 2 * nnz
+        gflops = (flops / (execution_time / 1000.0)) / 1e9
+
+        return {
+            'y': y.tolist(),
+            'execution_time_ms': execution_time,
+            'transfer_h2d_ms': transfer_time_h2d,
+            'transfer_d2h_ms': transfer_time_d2h,
+            'transfer_time_ms': transfer_time_h2d + transfer_time_d2h,
+            'total_time_ms': total_time,
+            'num_rows': num_rows,
+            'num_cols': num_cols,
+            'nnz': nnz,
+            'gflops': gflops,
+            'method': 'cuSPARSE'
+        }

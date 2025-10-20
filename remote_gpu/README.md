@@ -6,10 +6,11 @@ A client-server system for executing CUDA kernels on a remote GPU server. This i
 
 - ✅ Remote CUDA kernel execution
 - ✅ Automatic GPU architecture detection
-- ✅ **MTX file support** with server-side caching
+- ✅ **MTX file support** with server-side caching (up to 2 GB)
 - ✅ Performance metrics (GFLOPS, timing)
 - ✅ CSR format SpMV acceleration
 - ✅ API key authentication
+- ✅ Large file support (2 GB max, configurable)
 
 ## Architecture
 

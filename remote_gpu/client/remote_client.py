@@ -159,7 +159,7 @@ class RemoteGPUClient:
         response = self.session.post(
             f"{self.server_url}/execute_spmv",
             json=request_data,
-            timeout=300  # 5 minutes timeout
+            timeout=600  # 10 minutes timeout for large matrices
         )
 
         if response.status_code != 200:
@@ -246,7 +246,7 @@ class RemoteGPUClient:
                 'filename': filename,
                 'content': content_b64
             },
-            timeout=60
+            timeout=600  # 10 minutes for large files (up to 2GB)
         )
 
         if response.status_code != 200:
@@ -282,25 +282,34 @@ class RemoteGPUClient:
 
         return result.get('matrices', [])
 
-    def execute_spmv_mtx(self, cubin_file: str, mtx_filename: str,
-                        x: np.ndarray) -> Dict[str, Any]:
+    def execute_spmv_mtx(self, cubin_file: Optional[str], mtx_filename: str,
+                        x: np.ndarray, method: str = 'custom') -> Dict[str, Any]:
         """
         Execute SpMV using MTX file on server
 
         Args:
-            cubin_file: Path to compiled cubin file
+            cubin_file: Path to compiled cubin file (None for cusparse method)
             mtx_filename: Name of MTX file on server
             x: Input vector (numpy array)
+            method: 'custom' (default) or 'cusparse' for baseline
 
         Returns:
             Execution result dictionary
         """
-        # Read cubin file
-        with open(cubin_file, 'rb') as f:
-            kernel_binary = f.read()
+        # Prepare request data
+        request_data = {
+            'mtx_filename': mtx_filename,
+            'method': method
+        }
 
-        # Encode kernel as base64
-        kernel_b64 = base64.b64encode(kernel_binary).decode('ascii')
+        # Add kernel for custom method
+        if method == 'custom':
+            if cubin_file is None:
+                raise ValueError("cubin_file required for custom method")
+            with open(cubin_file, 'rb') as f:
+                kernel_binary = f.read()
+            kernel_b64 = base64.b64encode(kernel_binary).decode('ascii')
+            request_data['kernel'] = kernel_b64
 
         # Convert numpy array to list if needed
         if isinstance(x, np.ndarray):
@@ -308,20 +317,15 @@ class RemoteGPUClient:
         else:
             x_list = x
 
-        # Prepare request
-        request_data = {
-            'kernel': kernel_b64,
-            'mtx_filename': mtx_filename,
-            'x': x_list
-        }
+        request_data['x'] = x_list
 
         # Send request
-        print(f"Executing SpMV with MTX file: {mtx_filename}")
+        print(f"Executing SpMV with MTX file: {mtx_filename} (method: {method})")
 
         response = self.session.post(
             f"{self.server_url}/execute_spmv_mtx",
             json=request_data,
-            timeout=300
+            timeout=600  # 10 minutes for large matrices
         )
 
         if response.status_code != 200:
@@ -334,17 +338,19 @@ class RemoteGPUClient:
 
         return result['result']
 
-    def upload_and_execute_spmv(self, cu_file: str, mtx_file: str,
+    def upload_and_execute_spmv(self, cu_file: Optional[str], mtx_file: str,
                                 x: Optional[np.ndarray] = None,
-                                arch: Optional[str] = None) -> Dict[str, Any]:
+                                arch: Optional[str] = None,
+                                method: str = 'custom') -> Dict[str, Any]:
         """
         Complete workflow: upload MTX if needed, compile kernel, and execute SpMV
 
         Args:
-            cu_file: Path to CUDA kernel source
+            cu_file: Path to CUDA kernel source (None for cusparse method)
             mtx_file: Path to MTX file
             x: Input vector (optional, will generate random if None)
             arch: GPU architecture (optional, auto-detected if None)
+            method: 'custom' (default) or 'cusparse' for baseline
 
         Returns:
             Execution result dictionary
@@ -367,10 +373,15 @@ class RemoteGPUClient:
             print(f"Generating random input vector (size={info['num_cols']})")
             x = np.random.randn(info['num_cols']).astype(np.float32)
 
-        # Compile kernel
-        cubin_file = self.compile_cuda_kernel(cu_file, arch=arch)
+        # Compile kernel if using custom method
+        if method == 'custom':
+            if cu_file is None:
+                raise ValueError("cu_file required for custom method")
+            cubin_file = self.compile_cuda_kernel(cu_file, arch=arch)
+        else:
+            cubin_file = None
 
         # Execute SpMV
-        result = self.execute_spmv_mtx(cubin_file, mtx_filename, x)
+        result = self.execute_spmv_mtx(cubin_file, mtx_filename, x, method=method)
 
         return result
