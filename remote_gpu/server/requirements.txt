@@ -1,0 +1,4 @@
+flask>=2.3.0
+pycuda>=2022.1
+numpy>=1.24.0
+msgpack>=1.0.5
