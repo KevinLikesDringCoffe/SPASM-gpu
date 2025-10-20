@@ -70,7 +70,7 @@ class CUDAExecutor:
                         pass
             cls._contexts.clear()
 
-    def execute_spmv_csr(self, kernel_data: bytes, matrix_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_spmv_csr(self, kernel_data: bytes, matrix_data: Dict[str, Any], num_runs: int = 1) -> Dict[str, Any]:
         """
         Execute CSR SpMV kernel
 
@@ -84,13 +84,15 @@ class CUDAExecutor:
                 - col_indices: CSR column indices
                 - row_ptr: CSR row pointer
                 - x: input vector
+            num_runs: Number of runs to average (default: 1)
 
         Returns:
             Dictionary containing:
                 - y: output vector
-                - execution_time_ms: kernel execution time in milliseconds
+                - execution_time_ms: average kernel execution time in milliseconds
                 - transfer_time_ms: data transfer time in milliseconds
                 - total_time_ms: total time including transfers
+                - num_runs: number of runs performed
         """
         # Get or create CUDA context for this thread
         ctx = self._get_or_create_context()
@@ -153,23 +155,29 @@ class CUDAExecutor:
             )
             ctx.synchronize()
 
-            # Timed execution
-            start_kernel = time.perf_counter()
+            # Timed execution - multiple runs
+            execution_times = []
+            for _ in range(num_runs):
+                start_kernel = time.perf_counter()
 
-            kernel_func(
-                np.int32(num_rows),
-                values_gpu,
-                col_indices_gpu,
-                row_ptr_gpu,
-                x_gpu,
-                y_gpu,
-                block=(block_size, 1, 1),
-                grid=(grid_size, 1)
-            )
-            ctx.synchronize()
+                kernel_func(
+                    np.int32(num_rows),
+                    values_gpu,
+                    col_indices_gpu,
+                    row_ptr_gpu,
+                    x_gpu,
+                    y_gpu,
+                    block=(block_size, 1, 1),
+                    grid=(grid_size, 1)
+                )
+                ctx.synchronize()
 
-            end_kernel = time.perf_counter()
-            execution_time = (end_kernel - start_kernel) * 1000
+                end_kernel = time.perf_counter()
+                execution_times.append((end_kernel - start_kernel) * 1000)
+
+            # Calculate average execution time
+            execution_time = np.mean(execution_times)
+            execution_time_std = np.std(execution_times) if num_runs > 1 else 0.0
 
             # Transfer result back
             start_transfer_back = time.perf_counter()
@@ -195,6 +203,7 @@ class CUDAExecutor:
             return {
                 'y': y.tolist(),
                 'execution_time_ms': execution_time,
+                'execution_time_std_ms': execution_time_std,
                 'transfer_h2d_ms': transfer_time_h2d,
                 'transfer_d2h_ms': transfer_time_d2h,
                 'transfer_time_ms': transfer_time_h2d + transfer_time_d2h,
@@ -202,7 +211,8 @@ class CUDAExecutor:
                 'num_rows': num_rows,
                 'num_cols': num_cols,
                 'nnz': nnz,
-                'gflops': gflops
+                'gflops': gflops,
+                'num_runs': num_runs
             }
         except Exception:
             raise
@@ -210,12 +220,13 @@ class CUDAExecutor:
             # Always pop context after execution
             ctx.pop()
 
-    def execute_spmv_cusparse(self, matrix_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_spmv_cusparse(self, matrix_data: Dict[str, Any], num_runs: int = 1) -> Dict[str, Any]:
         """
         Execute CSR SpMV using cuSPARSE (baseline)
 
         Args:
             matrix_data: Dictionary containing CSR format data
+            num_runs: Number of runs to average (default: 1)
 
         Returns:
             Dictionary with execution results
@@ -256,14 +267,20 @@ class CUDAExecutor:
         y_gpu = csr_matrix.dot(x_gpu)
         cp.cuda.Stream.null.synchronize()
 
-        # Timed execution
-        start_kernel = time.perf_counter()
+        # Timed execution - multiple runs
+        execution_times = []
+        for _ in range(num_runs):
+            start_kernel = time.perf_counter()
 
-        y_gpu = csr_matrix.dot(x_gpu)
-        cp.cuda.Stream.null.synchronize()
+            y_gpu = csr_matrix.dot(x_gpu)
+            cp.cuda.Stream.null.synchronize()
 
-        end_kernel = time.perf_counter()
-        execution_time = (end_kernel - start_kernel) * 1000
+            end_kernel = time.perf_counter()
+            execution_times.append((end_kernel - start_kernel) * 1000)
+
+        # Calculate average execution time
+        execution_time = np.mean(execution_times)
+        execution_time_std = np.std(execution_times) if num_runs > 1 else 0.0
 
         # Transfer result back
         start_transfer_back = time.perf_counter()
@@ -281,6 +298,7 @@ class CUDAExecutor:
         return {
             'y': y.tolist(),
             'execution_time_ms': execution_time,
+            'execution_time_std_ms': execution_time_std,
             'transfer_h2d_ms': transfer_time_h2d,
             'transfer_d2h_ms': transfer_time_d2h,
             'transfer_time_ms': transfer_time_h2d + transfer_time_d2h,
@@ -289,5 +307,6 @@ class CUDAExecutor:
             'num_cols': num_cols,
             'nnz': nnz,
             'gflops': gflops,
-            'method': 'cuSPARSE'
+            'method': 'cuSPARSE',
+            'num_runs': num_runs
         }

@@ -106,7 +106,7 @@ class RemoteGPUClient:
         print(f"Compilation successful: {output_cubin}")
         return output_cubin
 
-    def execute_spmv_csr(self, cubin_file: str, matrix_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_spmv_csr(self, cubin_file: str, matrix_data: Dict[str, Any], num_runs: int = 1) -> Dict[str, Any]:
         """
         Execute CSR SpMV on remote GPU
 
@@ -120,14 +120,17 @@ class RemoteGPUClient:
                 - col_indices: CSR column indices (list or numpy array)
                 - row_ptr: CSR row pointer (list or numpy array)
                 - x: input vector (list or numpy array)
+            num_runs: Number of runs to average (default: 1)
 
         Returns:
             Dictionary containing:
                 - y: output vector
-                - execution_time_ms: kernel execution time
+                - execution_time_ms: average kernel execution time
+                - execution_time_std_ms: standard deviation of execution time
                 - transfer_time_ms: data transfer time
                 - total_time_ms: total time
                 - num_rows, num_cols, nnz: matrix dimensions
+                - num_runs: number of runs performed
         """
         # Read cubin file
         with open(cubin_file, 'rb') as f:
@@ -149,12 +152,13 @@ class RemoteGPUClient:
         # Prepare request
         request_data = {
             'kernel': kernel_b64,
-            'matrix_data': matrix_data_serializable
+            'matrix_data': matrix_data_serializable,
+            'num_runs': num_runs
         }
 
         # Send request
         print(f"Sending SpMV request to {self.server_url}/execute_spmv")
-        print(f"Matrix: {matrix_data['num_rows']}x{matrix_data['num_cols']}, nnz={matrix_data['nnz']}")
+        print(f"Matrix: {matrix_data['num_rows']}x{matrix_data['num_cols']}, nnz={matrix_data['nnz']}, runs={num_runs}")
 
         response = self.session.post(
             f"{self.server_url}/execute_spmv",
@@ -173,7 +177,7 @@ class RemoteGPUClient:
         return result['result']
 
     def compile_and_execute_spmv(self, cu_file: str, matrix_data: Dict[str, Any],
-                                 arch: Optional[str] = None) -> Dict[str, Any]:
+                                 arch: Optional[str] = None, num_runs: int = 1) -> Dict[str, Any]:
         """
         Compile CUDA kernel and execute SpMV in one call
 
@@ -181,6 +185,7 @@ class RemoteGPUClient:
             cu_file: Path to .cu source file
             matrix_data: Matrix data dictionary (see execute_spmv_csr)
             arch: GPU architecture (optional, auto-detected from server if None)
+            num_runs: Number of runs to average (default: 1)
 
         Returns:
             Execution result dictionary
@@ -189,7 +194,7 @@ class RemoteGPUClient:
         cubin_file = self.compile_cuda_kernel(cu_file, arch=arch)
 
         # Execute on remote GPU
-        result = self.execute_spmv_csr(cubin_file, matrix_data)
+        result = self.execute_spmv_csr(cubin_file, matrix_data, num_runs=num_runs)
 
         return result
 
@@ -283,7 +288,7 @@ class RemoteGPUClient:
         return result.get('matrices', [])
 
     def execute_spmv_mtx(self, cubin_file: Optional[str], mtx_filename: str,
-                        x: np.ndarray, method: str = 'custom') -> Dict[str, Any]:
+                        x: np.ndarray, method: str = 'custom', num_runs: int = 1) -> Dict[str, Any]:
         """
         Execute SpMV using MTX file on server
 
@@ -292,6 +297,7 @@ class RemoteGPUClient:
             mtx_filename: Name of MTX file on server
             x: Input vector (numpy array)
             method: 'custom' (default) or 'cusparse' for baseline
+            num_runs: Number of runs to average (default: 1)
 
         Returns:
             Execution result dictionary
@@ -299,7 +305,8 @@ class RemoteGPUClient:
         # Prepare request data
         request_data = {
             'mtx_filename': mtx_filename,
-            'method': method
+            'method': method,
+            'num_runs': num_runs
         }
 
         # Add kernel for custom method
@@ -320,7 +327,7 @@ class RemoteGPUClient:
         request_data['x'] = x_list
 
         # Send request
-        print(f"Executing SpMV with MTX file: {mtx_filename} (method: {method})")
+        print(f"Executing SpMV with MTX file: {mtx_filename} (method: {method}, runs: {num_runs})")
 
         response = self.session.post(
             f"{self.server_url}/execute_spmv_mtx",
@@ -341,7 +348,8 @@ class RemoteGPUClient:
     def upload_and_execute_spmv(self, cu_file: Optional[str], mtx_file: str,
                                 x: Optional[np.ndarray] = None,
                                 arch: Optional[str] = None,
-                                method: str = 'custom') -> Dict[str, Any]:
+                                method: str = 'custom',
+                                num_runs: int = 1) -> Dict[str, Any]:
         """
         Complete workflow: upload MTX if needed, compile kernel, and execute SpMV
 
@@ -351,6 +359,7 @@ class RemoteGPUClient:
             x: Input vector (optional, will generate random if None)
             arch: GPU architecture (optional, auto-detected if None)
             method: 'custom' (default) or 'cusparse' for baseline
+            num_runs: Number of runs to average (default: 1)
 
         Returns:
             Execution result dictionary
@@ -382,6 +391,6 @@ class RemoteGPUClient:
             cubin_file = None
 
         # Execute SpMV
-        result = self.execute_spmv_mtx(cubin_file, mtx_filename, x, method=method)
+        result = self.execute_spmv_mtx(cubin_file, mtx_filename, x, method=method, num_runs=num_runs)
 
         return result

@@ -26,6 +26,8 @@ def main():
                        help='Path to CUDA kernel (default: ../kernels/simple_spmv.cu)')
     parser.add_argument('--method', default='custom', choices=['custom', 'cusparse'],
                        help='Execution method: custom kernel or cuSPARSE baseline (default: custom)')
+    parser.add_argument('--runs', type=int, default=100,
+                       help='Number of runs to average (default: 100)')
     parser.add_argument('--server', default=None,
                        help='GPU server URL (default: from .env)')
     parser.add_argument('--api-key', default=None,
@@ -61,20 +63,24 @@ def main():
 
     # Execute SpMV
     print(f"Processing MTX file: {args.mtx_file}")
-    print(f"Method: {args.method}")
+    print(f"Method: {args.method}, Runs: {args.runs}")
     try:
         result = client.upload_and_execute_spmv(
             cu_file=kernel_path,
             mtx_file=args.mtx_file,
-            method=args.method
+            method=args.method,
+            num_runs=args.runs
         )
 
         # Display results
         print("\nResults:")
-        print(f"  Method:      {result.get('method', args.method)}")
-        print(f"  Matrix:      {result['num_rows']}x{result['num_cols']}, nnz={result['nnz']}")
-        print(f"  Kernel time: {result['execution_time_ms']:.3f} ms")
-        print(f"  Throughput:  {result['gflops']:.2f} GFLOPS")
+        print(f"  Method:          {result.get('method', args.method)}")
+        print(f"  Matrix:          {result['num_rows']}x{result['num_cols']}, nnz={result['nnz']}")
+        print(f"  Runs:            {result['num_runs']}")
+        print(f"  Avg kernel time: {result['execution_time_ms']:.3f} ms")
+        if result['num_runs'] > 1:
+            print(f"  Std deviation:   {result['execution_time_std_ms']:.3f} ms")
+        print(f"  Throughput:      {result['gflops']:.2f} GFLOPS")
 
     except Exception as e:
         print(f"Error: {e}")

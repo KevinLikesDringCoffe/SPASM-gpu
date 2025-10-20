@@ -105,11 +105,14 @@ def execute_spmv():
         # Decode kernel
         kernel_binary = base64.b64decode(kernel_b64)
 
+        # Get number of runs (default: 1)
+        num_runs = data.get('num_runs', 1)
+
         logger.info(f"Executing SpMV: rows={matrix_data['num_rows']}, "
-                   f"cols={matrix_data['num_cols']}, nnz={matrix_data['nnz']}")
+                   f"cols={matrix_data['num_cols']}, nnz={matrix_data['nnz']}, runs={num_runs}")
 
         # Execute on GPU
-        result = executor.execute_spmv_csr(kernel_binary, matrix_data)
+        result = executor.execute_spmv_csr(kernel_binary, matrix_data, num_runs=num_runs)
 
         logger.info(f"Execution completed: {result['execution_time_ms']:.3f} ms, "
                    f"{result['gflops']:.2f} GFLOPS")
@@ -310,6 +313,7 @@ def execute_spmv_mtx():
         mtx_filename = data.get('mtx_filename')
         x = data.get('x')
         method = data.get('method', 'custom')
+        num_runs = data.get('num_runs', 1)
 
         if not mtx_filename or not x:
             return jsonify({
@@ -325,11 +329,11 @@ def execute_spmv_mtx():
         csr_data['x'] = x
 
         logger.info(f"Executing SpMV ({method}): rows={csr_data['num_rows']}, "
-                   f"cols={csr_data['num_cols']}, nnz={csr_data['nnz']}")
+                   f"cols={csr_data['num_cols']}, nnz={csr_data['nnz']}, runs={num_runs}")
 
         # Execute on GPU based on method
         if method == 'cusparse':
-            result = executor.execute_spmv_cusparse(csr_data)
+            result = executor.execute_spmv_cusparse(csr_data, num_runs=num_runs)
         else:
             # Custom kernel method
             kernel_b64 = data.get('kernel')
@@ -340,7 +344,7 @@ def execute_spmv_mtx():
                 }), 400
 
             kernel_binary = base64.b64decode(kernel_b64)
-            result = executor.execute_spmv_csr(kernel_binary, csr_data)
+            result = executor.execute_spmv_csr(kernel_binary, csr_data, num_runs=num_runs)
             result['method'] = 'custom'
 
         logger.info(f"Execution completed ({result.get('method', method)}): "
