@@ -109,7 +109,8 @@ def execute_spmv():
         # Execute on GPU
         result = executor.execute_spmv_csr(kernel_binary, matrix_data)
 
-        logger.info(f"Execution completed: {result['execution_time_ms']:.3f} ms")
+        logger.info(f"Execution completed: {result['execution_time_ms']:.3f} ms, "
+                   f"{result['gflops']:.2f} GFLOPS")
 
         return jsonify({
             'success': True,

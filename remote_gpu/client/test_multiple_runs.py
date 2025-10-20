@@ -71,7 +71,7 @@ def main():
 
         try:
             result = client.execute_spmv_csr(cubin, matrix_data)
-            print(f"✓ Success: {result['execution_time_ms']:.3f} ms")
+            print(f"✓ Success: {result['execution_time_ms']:.3f} ms, {result['gflops']:.2f} GFLOPS")
         except Exception as e:
             print(f"✗ Failed: {e}")
             return

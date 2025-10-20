@@ -106,6 +106,7 @@ def main():
     print(f"   Transfer H2D time: {result['transfer_h2d_ms']:.3f} ms")
     print(f"   Transfer D2H time: {result['transfer_d2h_ms']:.3f} ms")
     print(f"   Total time:        {result['total_time_ms']:.3f} ms")
+    print(f"\n   Throughput:        {result['gflops']:.2f} GFLOPS")
 
     # Verify result
     y_gpu = np.array(result['y'], dtype=np.float32)

@@ -1,7 +1,7 @@
 import pycuda.driver as cuda
 import numpy as np
 import time
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 import threading
 import weakref
 
@@ -179,6 +179,11 @@ class CUDAExecutor:
             end_total = time.perf_counter()
             total_time = (end_total - start_total) * 1000
 
+            # Calculate throughput
+            # SpMV: 2 * nnz FLOPs (one multiply, one add per non-zero)
+            flops = 2 * nnz
+            gflops = (flops / (execution_time / 1000.0)) / 1e9  # GFLOPS
+
             return {
                 'y': y.tolist(),
                 'execution_time_ms': execution_time,
@@ -188,9 +193,10 @@ class CUDAExecutor:
                 'total_time_ms': total_time,
                 'num_rows': num_rows,
                 'num_cols': num_cols,
-                'nnz': nnz
+                'nnz': nnz,
+                'gflops': gflops
             }
-        except Exception as e:
+        except Exception:
             raise
         finally:
             # Always pop context after execution
