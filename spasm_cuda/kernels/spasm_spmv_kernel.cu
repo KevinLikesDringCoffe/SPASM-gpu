@@ -116,26 +116,7 @@ __device__ inline void process_pattern_generic(uint16_t pattern, const float* va
 
 __device__ inline void process_4x4_block(uint32_t templateId, const float* vals, const float* x, float* y) {
     uint16_t pattern = c_templateMasks[templateId];
-
-    switch(pattern) {
-        case 0x000F: process_pattern_0x000f(vals, x, y); break;
-        case 0x00F0: process_pattern_0x00f0(vals, x, y); break;
-        case 0x0F00: process_pattern_0x0f00(vals, x, y); break;
-        case 0xF000: process_pattern_0xf000(vals, x, y); break;
-        case 0x1111: process_pattern_0x1111(vals, x, y); break;
-        case 0x2222: process_pattern_0x2222(vals, x, y); break;
-        case 0x4444: process_pattern_0x4444(vals, x, y); break;
-        case 0x8888: process_pattern_0x8888(vals, x, y); break;
-        case 0x0033: process_pattern_0x0033(vals, x, y); break;
-        case 0x00CC: process_pattern_0x00cc(vals, x, y); break;
-        case 0x3300: process_pattern_0x3300(vals, x, y); break;
-        case 0xCC00: process_pattern_0xcc00(vals, x, y); break;
-        case 0x8421: process_pattern_0x8421(vals, x, y); break;
-        case 0x4218: process_pattern_0x4218(vals, x, y); break;
-        case 0x2184: process_pattern_0x2184(vals, x, y); break;
-        case 0x1842: process_pattern_0x1842(vals, x, y); break;
-        default: process_pattern_generic(pattern, vals, x, y); break;
-    }
+    process_pattern_generic(pattern, vals, x, y);
 }
 
 __global__ void spasm_spmv_kernel(
@@ -188,7 +169,7 @@ __global__ void spasm_spmv_kernel(
         #pragma unroll
         for (int i = 0; i < 4; i++) {
             uint32_t rowIdx = globalRow + i;
-            if (rowIdx < maxRows && localY[i] != 0.0f) {
+            if (rowIdx < maxRows) {
                 atomicAdd(&y[rowIdx], localY[i]);
             }
         }
