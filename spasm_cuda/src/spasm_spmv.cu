@@ -11,7 +11,8 @@ extern void launchSpasmSpmvKernel(
     float* d_y,
     uint32_t numTiles,
     uint32_t tileSize,
-    uint32_t maxCols);
+    uint32_t maxCols,
+    uint32_t maxRows);
 
 extern void copyTemplateMasksToConstant(const uint16_t* h_masks, uint32_t numMasks);
 
@@ -88,7 +89,8 @@ void spasmCudaSpmv(const SPASMDeviceData& devData,
         d_y,
         devData.numTiles,
         devData.tileSize,
-        devData.cols
+        devData.cols,
+        devData.rows
     );
 
     CUDA_CHECK(cudaDeviceSynchronize());

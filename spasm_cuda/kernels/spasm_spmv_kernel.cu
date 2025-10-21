@@ -147,7 +147,8 @@ __global__ void spasm_spmv_kernel(
     float* __restrict__ y,
     uint32_t numTiles,
     uint32_t tileSize,
-    uint32_t maxCols)
+    uint32_t maxCols,
+    uint32_t maxRows)
 {
     uint32_t tileIdx = blockIdx.x;
     if (tileIdx >= numTiles) return;
@@ -157,17 +158,6 @@ __global__ void spasm_spmv_kernel(
     uint32_t blockStart = tileBlockRanges[tileIdx * 2];
     uint32_t blockEnd = tileBlockRanges[tileIdx * 2 + 1];
 
-    extern __shared__ float smem[];
-    float* s_x = smem;
-
-    uint32_t tileColStart = tileCol * tileSize;
-    uint32_t tileColEnd = min(tileColStart + tileSize, maxCols);
-
-    for (uint32_t i = threadIdx.x; i < (tileColEnd - tileColStart); i += blockDim.x) {
-        s_x[i] = x[tileColStart + i];
-    }
-    __syncthreads();
-
     for (uint32_t posIdx = blockStart + threadIdx.x; posIdx < blockEnd; posIdx += blockDim.x) {
         uint32_t pos = positionEncodings[posIdx];
 
@@ -176,7 +166,7 @@ __global__ void spasm_spmv_kernel(
         uint32_t t_id = (pos >> 28) & 0xF;
 
         uint32_t globalRow = tileRow * tileSize + r_idx * 4;
-        uint32_t localCol = c_idx * 4;
+        uint32_t globalCol = tileCol * tileSize + c_idx * 4;
 
         const float* blockValues = &values[posIdx * 4];
 
@@ -185,8 +175,9 @@ __global__ void spasm_spmv_kernel(
 
         #pragma unroll
         for (int i = 0; i < 4; i++) {
-            if (localCol + i < (tileColEnd - tileColStart)) {
-                localX[i] = s_x[localCol + i];
+            uint32_t colIdx = globalCol + i;
+            if (colIdx < maxCols) {
+                localX[i] = x[colIdx];
             } else {
                 localX[i] = 0.0f;
             }
@@ -196,8 +187,9 @@ __global__ void spasm_spmv_kernel(
 
         #pragma unroll
         for (int i = 0; i < 4; i++) {
-            if (localY[i] != 0.0f) {
-                atomicAdd(&y[globalRow + i], localY[i]);
+            uint32_t rowIdx = globalRow + i;
+            if (rowIdx < maxRows && localY[i] != 0.0f) {
+                atomicAdd(&y[rowIdx], localY[i]);
             }
         }
     }
@@ -212,13 +204,13 @@ void launchSpasmSpmvKernel(
     float* d_y,
     uint32_t numTiles,
     uint32_t tileSize,
-    uint32_t maxCols)
+    uint32_t maxCols,
+    uint32_t maxRows)
 {
     int blockSize = 256;
     int gridSize = numTiles;
-    size_t sharedMemSize = tileSize * sizeof(float);
 
-    spasm_spmv_kernel<<<gridSize, blockSize, sharedMemSize>>>(
+    spasm_spmv_kernel<<<gridSize, blockSize>>>(
         d_tilePositions,
         d_tileBlockRanges,
         d_positionEncodings,
@@ -227,7 +219,8 @@ void launchSpasmSpmvKernel(
         d_y,
         numTiles,
         tileSize,
-        maxCols
+        maxCols,
+        maxRows
     );
 }
 
