@@ -9,12 +9,7 @@
 #include "utils/timer.h"
 #include "../spasm_converter/include/core/format.h"
 #include "../spasm_converter/include/io/spasm_io.h"
-
-namespace cpu_ref {
-    void spmv_spasm(const spasm::SPASMMatrix& A, const std::vector<float>& x, std::vector<float>& y);
-    void spmv_spasm_timed(const spasm::SPASMMatrix& A, const std::vector<float>& x,
-                          std::vector<float>& y, int num_runs, double& avg_time_ms);
-}
+#include "../spasm_converter/include/spmv/spasm.h"
 
 std::vector<float> generateRandomVector(size_t size) {
     std::random_device rd;
@@ -100,12 +95,20 @@ int main(int argc, char** argv) {
     std::vector<float> y_gpu(matrix.rows, 0.0f);
 
     std::cout << "\n[CPU Reference]\n";
-    double cpu_time_ms;
-    cpu_ref::spmv_spasm_timed(matrix, x, y_cpu, numRuns, cpu_time_ms);
-    double cpu_gflops = (2.0 * matrix.originalNnz * numRuns) / (cpu_time_ms * 1e6);
+    spmv::SPASMSpMV cpu_spmv;
+    CPUTimer cpu_timer;
+    cpu_timer.start();
+    for (int i = 0; i < numRuns; i++) {
+        cpu_spmv.spmv(matrix, x, y_cpu);
+    }
+    cpu_timer.stop();
+    double cpu_time_ms = cpu_timer.elapsed_ms() / numRuns;
+    double cpu_gflops = (2.0 * matrix.originalNnz) / (cpu_time_ms * 1e6);
+    double cpu_throughput = (matrix.originalNnz / 1e9) / (cpu_time_ms / 1000.0);
     std::cout << "  Time per run:     " << std::fixed << std::setprecision(4)
               << cpu_time_ms << " ms\n";
     std::cout << "  Performance:      " << cpu_gflops << " GFLOPS\n";
+    std::cout << "  Throughput:       " << cpu_throughput << " GNNZ/s\n";
 
     std::cout << "\n[GPU Setup]\n";
     std::vector<uint32_t> h_tilePositions;
