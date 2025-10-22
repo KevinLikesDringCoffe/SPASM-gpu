@@ -2,15 +2,11 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
-extern __constant__ uint16_t c_templateMasks[16];
-
-__global__ void test_pattern_kernel(uint16_t* output) {
+__global__ void test_pattern_kernel(const uint16_t* input, uint16_t* output) {
     for (int i = 0; i < 16; i++) {
-        output[i] = c_templateMasks[i];
+        output[i] = input[i];
     }
 }
-
-extern void copyTemplateMasksToConstant(const uint16_t* h_masks, uint32_t numMasks);
 
 int main() {
     uint16_t h_masks[16] = {
@@ -20,14 +16,16 @@ int main() {
         0x8421, 0x4218, 0x2184, 0x1842
     };
 
-    copyTemplateMasksToConstant(h_masks, 16);
-
+    uint16_t* d_input;
     uint16_t* d_output;
     uint16_t h_output[16];
 
+    cudaMalloc(&d_input, 16 * sizeof(uint16_t));
     cudaMalloc(&d_output, 16 * sizeof(uint16_t));
 
-    test_pattern_kernel<<<1, 1>>>(d_output);
+    cudaMemcpy(d_input, h_masks, 16 * sizeof(uint16_t), cudaMemcpyHostToDevice);
+
+    test_pattern_kernel<<<1, 1>>>(d_input, d_output);
 
     cudaMemcpy(h_output, d_output, 16 * sizeof(uint16_t), cudaMemcpyDeviceToHost);
 
@@ -43,6 +41,7 @@ int main() {
 
     std::cout << "\nResult: " << (all_correct ? "PASS" : "FAIL") << "\n";
 
+    cudaFree(d_input);
     cudaFree(d_output);
     return all_correct ? 0 : 1;
 }
