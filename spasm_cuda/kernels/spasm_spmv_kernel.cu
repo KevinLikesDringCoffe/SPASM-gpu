@@ -120,26 +120,25 @@ __device__ inline void process_4x4_block(uint32_t templateId, const uint16_t* te
 
 __global__ void spasm_spmv_kernel(
     const uint32_t* __restrict__ tilePositions,
-    const uint32_t* __restrict__ tileBlockRanges,
     const uint32_t* __restrict__ positionEncodings,
+    const uint32_t* __restrict__ blockToTile,
     const float* __restrict__ values,
     const uint16_t* __restrict__ templateMasks,
     const float* __restrict__ x,
     float* __restrict__ y,
-    uint32_t numTiles,
+    uint32_t numPositions,
     uint32_t tileSize,
     uint32_t maxCols,
     uint32_t maxRows)
 {
-    uint32_t tileIdx = blockIdx.x;
-    if (tileIdx >= numTiles) return;
+    uint32_t posIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (posIdx >= numPositions) return;
 
+    uint32_t tileIdx = blockToTile[posIdx];
     uint32_t tileRow = tilePositions[tileIdx * 2];
     uint32_t tileCol = tilePositions[tileIdx * 2 + 1];
-    uint32_t blockStart = tileBlockRanges[tileIdx * 2];
-    uint32_t blockEnd = tileBlockRanges[tileIdx * 2 + 1];
 
-    for (uint32_t posIdx = blockStart + threadIdx.x; posIdx < blockEnd; posIdx += blockDim.x) {
+    {
         uint32_t pos = positionEncodings[posIdx];
 
         uint32_t c_idx = pos & 0x1FFF;
@@ -178,29 +177,29 @@ __global__ void spasm_spmv_kernel(
 
 void launchSpasmSpmvKernel(
     const uint32_t* d_tilePositions,
-    const uint32_t* d_tileBlockRanges,
     const uint32_t* d_positionEncodings,
+    const uint32_t* d_blockToTile,
     const float* d_values,
     const uint16_t* d_templateMasks,
     const float* d_x,
     float* d_y,
-    uint32_t numTiles,
+    uint32_t numPositions,
     uint32_t tileSize,
     uint32_t maxCols,
     uint32_t maxRows)
 {
     int blockSize = 256;
-    int gridSize = numTiles;
+    int gridSize = (numPositions + blockSize - 1) / blockSize;
 
     spasm_spmv_kernel<<<gridSize, blockSize>>>(
         d_tilePositions,
-        d_tileBlockRanges,
         d_positionEncodings,
+        d_blockToTile,
         d_values,
         d_templateMasks,
         d_x,
         d_y,
-        numTiles,
+        numPositions,
         tileSize,
         maxCols,
         maxRows

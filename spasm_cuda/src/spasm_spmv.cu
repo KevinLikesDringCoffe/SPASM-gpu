@@ -4,13 +4,13 @@
 
 extern void launchSpasmSpmvKernel(
     const uint32_t* d_tilePositions,
-    const uint32_t* d_tileBlockRanges,
     const uint32_t* d_positionEncodings,
+    const uint32_t* d_blockToTile,
     const float* d_values,
     const uint16_t* d_templateMasks,
     const float* d_x,
     float* d_y,
-    uint32_t numTiles,
+    uint32_t numPositions,
     uint32_t tileSize,
     uint32_t maxCols,
     uint32_t maxRows);
@@ -41,15 +41,15 @@ void spasmCudaMalloc(SPASMDeviceData& devData,
     devData.cols = cols;
 
     CUDA_CHECK(cudaMalloc(&devData.d_tilePositions, numTiles * 2 * sizeof(uint32_t)));
-    CUDA_CHECK(cudaMalloc(&devData.d_tileBlockRanges, numTiles * 2 * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&devData.d_positionEncodings, numPositions * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc(&devData.d_blockToTile, numPositions * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&devData.d_values, numPositions * 4 * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&devData.d_templateMasks, numTemplates * sizeof(uint16_t)));
 }
 
 void spasmCudaCopy(SPASMDeviceData& devData,
                    const uint32_t* h_tilePositions,
-                   const uint32_t* h_tileBlockRanges,
+                   const uint32_t* h_blockToTile,
                    const uint32_t* h_positionEncodings,
                    const float* h_values,
                    const uint16_t* h_templateMasks)
@@ -58,8 +58,8 @@ void spasmCudaCopy(SPASMDeviceData& devData,
                           devData.numTiles * 2 * sizeof(uint32_t),
                           cudaMemcpyHostToDevice));
 
-    CUDA_CHECK(cudaMemcpy(devData.d_tileBlockRanges, h_tileBlockRanges,
-                          devData.numTiles * 2 * sizeof(uint32_t),
+    CUDA_CHECK(cudaMemcpy(devData.d_blockToTile, h_blockToTile,
+                          devData.numPositions * sizeof(uint32_t),
                           cudaMemcpyHostToDevice));
 
     CUDA_CHECK(cudaMemcpy(devData.d_positionEncodings, h_positionEncodings,
@@ -83,13 +83,13 @@ void spasmCudaSpmv(const SPASMDeviceData& devData,
 
     launchSpasmSpmvKernel(
         devData.d_tilePositions,
-        devData.d_tileBlockRanges,
         devData.d_positionEncodings,
+        devData.d_blockToTile,
         devData.d_values,
         devData.d_templateMasks,
         d_x,
         d_y,
-        devData.numTiles,
+        devData.numPositions,
         devData.tileSize,
         devData.cols,
         devData.rows
@@ -101,7 +101,7 @@ void spasmCudaSpmv(const SPASMDeviceData& devData,
 void spasmCudaFree(SPASMDeviceData& devData)
 {
     CUDA_CHECK(cudaFree(devData.d_tilePositions));
-    CUDA_CHECK(cudaFree(devData.d_tileBlockRanges));
+    CUDA_CHECK(cudaFree(devData.d_blockToTile));
     CUDA_CHECK(cudaFree(devData.d_positionEncodings));
     CUDA_CHECK(cudaFree(devData.d_values));
     CUDA_CHECK(cudaFree(devData.d_templateMasks));

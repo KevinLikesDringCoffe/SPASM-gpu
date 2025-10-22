@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
 
     std::cout << "\n[GPU Setup]\n";
     std::vector<uint32_t> h_tilePositions;
-    std::vector<uint32_t> h_tileBlockRanges;
+    std::vector<uint32_t> h_blockToTile(matrix.getNumPositions());
     std::vector<uint16_t> h_templateMasks;
 
     for (const auto& tp : matrix.tilePositions) {
@@ -120,9 +120,12 @@ int main(int argc, char** argv) {
         h_tilePositions.push_back(tp.tileColIdx);
     }
 
-    for (const auto& range : matrix.tileBlockRanges) {
-        h_tileBlockRanges.push_back(range.blockStart);
-        h_tileBlockRanges.push_back(range.blockEnd);
+    // Build blockToTile mapping
+    for (size_t tileIdx = 0; tileIdx < matrix.tileBlockRanges.size(); tileIdx++) {
+        const auto& range = matrix.tileBlockRanges[tileIdx];
+        for (uint32_t blockIdx = range.blockStart; blockIdx < range.blockEnd; blockIdx++) {
+            h_blockToTile[blockIdx] = tileIdx;
+        }
     }
 
     for (const auto& tmpl : matrix.templatePatterns) {
@@ -140,7 +143,7 @@ int main(int argc, char** argv) {
 
     spasmCudaCopy(devData,
                   h_tilePositions.data(),
-                  h_tileBlockRanges.data(),
+                  h_blockToTile.data(),
                   matrix.positionEncodings.data(),
                   matrix.values.data(),
                   h_templateMasks.data());

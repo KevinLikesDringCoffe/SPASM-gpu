@@ -8,8 +8,8 @@ typedef uint32_t PositionEncoding;
 
 struct SPASMDeviceData {
     uint32_t* d_tilePositions;
-    uint32_t* d_tileBlockRanges;
     uint32_t* d_positionEncodings;
+    uint32_t* d_blockToTile;
     float* d_values;
     uint16_t* d_templateMasks;
 
@@ -31,7 +31,7 @@ void spasmCudaMalloc(SPASMDeviceData& devData,
 
 void spasmCudaCopy(SPASMDeviceData& devData,
                    const uint32_t* h_tilePositions,
-                   const uint32_t* h_tileBlockRanges,
+                   const uint32_t* h_blockToTile,
                    const uint32_t* h_positionEncodings,
                    const float* h_values,
                    const uint16_t* h_templateMasks);
