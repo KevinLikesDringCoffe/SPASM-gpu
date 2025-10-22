@@ -145,54 +145,53 @@ __global__ void spmvKernel(
     uint32_t blockEnd = tileBlockRanges[tileIdx * 2 + 1];
 
     uint32_t numBlocks = blockEnd - blockStart;
-    uint32_t blockIdx_local = threadIdx.x;
 
-    if (blockIdx_local >= numBlocks) return;
+    for (uint32_t blockIdx_local = threadIdx.x; blockIdx_local < numBlocks; blockIdx_local += blockDim.x) {
+        uint32_t posIdx = blockStart + blockIdx_local;
+        uint32_t pos = positionEncodings[posIdx];
 
-    uint32_t posIdx = blockStart + blockIdx_local;
-    uint32_t pos = positionEncodings[posIdx];
+        uint32_t blockRow = getRowIndex(pos);
+        uint32_t blockCol = getColumnIndex(pos);
+        uint32_t templateId = getTemplateId(pos);
 
-    uint32_t blockRow = getRowIndex(pos);
-    uint32_t blockCol = getColumnIndex(pos);
-    uint32_t templateId = getTemplateId(pos);
+        uint32_t globalRow = tileRow * tileSize + blockRow * 4;
+        uint32_t globalCol = tileCol * tileSize + blockCol * 4;
 
-    uint32_t globalRow = tileRow * tileSize + blockRow * 4;
-    uint32_t globalCol = tileCol * tileSize + blockCol * 4;
+        float localX[4];
+        float localY[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
-    float localX[4];
-    float localY[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        for (int i = 0; i < 4; i++) {
+            uint32_t colIdx = globalCol + i;
+            localX[i] = (colIdx < cols) ? x[colIdx] : 0.0f;
+        }
 
-    for (int i = 0; i < 4; i++) {
-        uint32_t colIdx = globalCol + i;
-        localX[i] = (colIdx < cols) ? x[colIdx] : 0.0f;
-    }
+        const float* blockValues = &values[posIdx * 4];
 
-    const float* blockValues = &values[posIdx * 4];
+        switch (templateId) {
+            case 0: processBlock_0x000f(blockValues, localX, localY); break;
+            case 1: processBlock_0x00f0(blockValues, localX, localY); break;
+            case 2: processBlock_0x0f00(blockValues, localX, localY); break;
+            case 3: processBlock_0xf000(blockValues, localX, localY); break;
+            case 4: processBlock_0x1111(blockValues, localX, localY); break;
+            case 5: processBlock_0x2222(blockValues, localX, localY); break;
+            case 6: processBlock_0x4444(blockValues, localX, localY); break;
+            case 7: processBlock_0x8888(blockValues, localX, localY); break;
+            case 8: processBlock_0x0033(blockValues, localX, localY); break;
+            case 9: processBlock_0x00cc(blockValues, localX, localY); break;
+            case 10: processBlock_0x3300(blockValues, localX, localY); break;
+            case 11: processBlock_0xcc00(blockValues, localX, localY); break;
+            case 12: processBlock_0x8421(blockValues, localX, localY); break;
+            case 13: processBlock_0x4218(blockValues, localX, localY); break;
+            case 14: processBlock_0x2184(blockValues, localX, localY); break;
+            case 15: processBlock_0x1842(blockValues, localX, localY); break;
+            default: processBlock_generic(templatePatterns[templateId], blockValues, localX, localY); break;
+        }
 
-    switch (templateId) {
-        case 0: processBlock_0x000f(blockValues, localX, localY); break;
-        case 1: processBlock_0x00f0(blockValues, localX, localY); break;
-        case 2: processBlock_0x0f00(blockValues, localX, localY); break;
-        case 3: processBlock_0xf000(blockValues, localX, localY); break;
-        case 4: processBlock_0x1111(blockValues, localX, localY); break;
-        case 5: processBlock_0x2222(blockValues, localX, localY); break;
-        case 6: processBlock_0x4444(blockValues, localX, localY); break;
-        case 7: processBlock_0x8888(blockValues, localX, localY); break;
-        case 8: processBlock_0x0033(blockValues, localX, localY); break;
-        case 9: processBlock_0x00cc(blockValues, localX, localY); break;
-        case 10: processBlock_0x3300(blockValues, localX, localY); break;
-        case 11: processBlock_0xcc00(blockValues, localX, localY); break;
-        case 12: processBlock_0x8421(blockValues, localX, localY); break;
-        case 13: processBlock_0x4218(blockValues, localX, localY); break;
-        case 14: processBlock_0x2184(blockValues, localX, localY); break;
-        case 15: processBlock_0x1842(blockValues, localX, localY); break;
-        default: processBlock_generic(templatePatterns[templateId], blockValues, localX, localY); break;
-    }
-
-    for (int i = 0; i < 4; i++) {
-        uint32_t rowIdx = globalRow + i;
-        if (rowIdx < rows && localY[i] != 0.0f) {
-            atomicAdd(&y[rowIdx], localY[i]);
+        for (int i = 0; i < 4; i++) {
+            uint32_t rowIdx = globalRow + i;
+            if (rowIdx < rows && localY[i] != 0.0f) {
+                atomicAdd(&y[rowIdx], localY[i]);
+            }
         }
     }
 }

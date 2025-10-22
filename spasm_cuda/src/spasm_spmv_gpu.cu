@@ -70,21 +70,21 @@ void freeSPASMCUDA(SPASMMatrixCUDA& cuda) {
 }
 
 void spmvCUDA(const SPASMMatrixCUDA& A, int numIterations) {
-    uint32_t maxBlocksPerTile = 0;
+    const uint32_t threadsPerBlock = 1024;
+
     std::vector<uint32_t> hostBlockRanges(A.numTiles * 2);
     CUDA_CHECK(cudaMemcpy(hostBlockRanges.data(), A.d_tileBlockRanges,
                          A.numTiles * 2 * sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
+    uint32_t maxBlocksPerTile = 0;
     for (uint32_t i = 0; i < A.numTiles; i++) {
         uint32_t numBlocks = hostBlockRanges[i * 2 + 1] - hostBlockRanges[i * 2];
         maxBlocksPerTile = std::max(maxBlocksPerTile, numBlocks);
     }
 
-    if (maxBlocksPerTile > 1024) {
-        std::cerr << "Warning: maxBlocksPerTile (" << maxBlocksPerTile
-                  << ") exceeds 1024, capping to 1024" << std::endl;
-        maxBlocksPerTile = 1024;
-    }
+    std::cout << "Kernel configuration: " << A.numTiles << " blocks, "
+              << threadsPerBlock << " threads per block" << std::endl;
+    std::cout << "Max 4x4 blocks per tile: " << maxBlocksPerTile << std::endl;
 
     CUDA_CHECK(cudaMemset(A.d_y, 0, A.rows * sizeof(float)));
 
@@ -111,7 +111,7 @@ void spmvCUDA(const SPASMMatrixCUDA& A, int numIterations) {
             A.cols,
             A.tileSize,
             A.numTiles,
-            maxBlocksPerTile
+            threadsPerBlock
         );
     }
 
