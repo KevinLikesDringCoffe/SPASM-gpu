@@ -1,7 +1,8 @@
 #include <iostream>
 #include <cstdint>
+#include <cuda_runtime.h>
 
-__constant__ uint16_t c_templateMasks[16];
+extern __constant__ uint16_t c_templateMasks[16];
 
 __global__ void test_pattern_kernel(uint16_t* output) {
     for (int i = 0; i < 16; i++) {

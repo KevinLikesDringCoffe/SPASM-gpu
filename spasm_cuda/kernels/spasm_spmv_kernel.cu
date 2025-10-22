@@ -1,7 +1,6 @@
 #include <cuda_runtime.h>
 #include <cstdint>
-
-__constant__ uint16_t c_templateMasks[16];
+#include <cstdio>
 
 __device__ inline void process_pattern_0x000f(const float* vals, const float* x, float* y) {
     y[0] += vals[0] * x[0] + vals[1] * x[1] + vals[2] * x[2] + vals[3] * x[3];
@@ -114,8 +113,8 @@ __device__ inline void process_pattern_generic(uint16_t pattern, const float* va
     }
 }
 
-__device__ inline void process_4x4_block(uint32_t templateId, const float* vals, const float* x, float* y) {
-    uint16_t pattern = c_templateMasks[templateId];
+__device__ inline void process_4x4_block(uint32_t templateId, const uint16_t* templateMasks, const float* vals, const float* x, float* y) {
+    uint16_t pattern = templateMasks[templateId];
     process_pattern_generic(pattern, vals, x, y);
 }
 
@@ -124,6 +123,7 @@ __global__ void spasm_spmv_kernel(
     const uint32_t* __restrict__ tileBlockRanges,
     const uint32_t* __restrict__ positionEncodings,
     const float* __restrict__ values,
+    const uint16_t* __restrict__ templateMasks,
     const float* __restrict__ x,
     float* __restrict__ y,
     uint32_t numTiles,
@@ -164,7 +164,7 @@ __global__ void spasm_spmv_kernel(
             }
         }
 
-        process_4x4_block(t_id, blockValues, localX, localY);
+        process_4x4_block(t_id, templateMasks, blockValues, localX, localY);
 
         #pragma unroll
         for (int i = 0; i < 4; i++) {
@@ -181,6 +181,7 @@ void launchSpasmSpmvKernel(
     const uint32_t* d_tileBlockRanges,
     const uint32_t* d_positionEncodings,
     const float* d_values,
+    const uint16_t* d_templateMasks,
     const float* d_x,
     float* d_y,
     uint32_t numTiles,
@@ -196,6 +197,7 @@ void launchSpasmSpmvKernel(
         d_tileBlockRanges,
         d_positionEncodings,
         d_values,
+        d_templateMasks,
         d_x,
         d_y,
         numTiles,
@@ -205,6 +207,3 @@ void launchSpasmSpmvKernel(
     );
 }
 
-void copyTemplateMasksToConstant(const uint16_t* h_masks, uint32_t numMasks) {
-    cudaMemcpyToSymbol(c_templateMasks, h_masks, numMasks * sizeof(uint16_t));
-}

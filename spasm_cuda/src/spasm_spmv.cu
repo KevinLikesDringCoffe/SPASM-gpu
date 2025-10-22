@@ -7,14 +7,13 @@ extern void launchSpasmSpmvKernel(
     const uint32_t* d_tileBlockRanges,
     const uint32_t* d_positionEncodings,
     const float* d_values,
+    const uint16_t* d_templateMasks,
     const float* d_x,
     float* d_y,
     uint32_t numTiles,
     uint32_t tileSize,
     uint32_t maxCols,
     uint32_t maxRows);
-
-extern void copyTemplateMasksToConstant(const uint16_t* h_masks, uint32_t numMasks);
 
 #define CUDA_CHECK(call) \
     do { \
@@ -71,7 +70,9 @@ void spasmCudaCopy(SPASMDeviceData& devData,
                           devData.numPositions * 4 * sizeof(float),
                           cudaMemcpyHostToDevice));
 
-    copyTemplateMasksToConstant(h_templateMasks, devData.numTemplates);
+    CUDA_CHECK(cudaMemcpy(devData.d_templateMasks, h_templateMasks,
+                          devData.numTemplates * sizeof(uint16_t),
+                          cudaMemcpyHostToDevice));
 }
 
 void spasmCudaSpmv(const SPASMDeviceData& devData,
@@ -85,6 +86,7 @@ void spasmCudaSpmv(const SPASMDeviceData& devData,
         devData.d_tileBlockRanges,
         devData.d_positionEncodings,
         devData.d_values,
+        devData.d_templateMasks,
         d_x,
         d_y,
         devData.numTiles,
