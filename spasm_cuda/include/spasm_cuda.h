@@ -53,10 +53,4 @@ bool verifyResults(const std::vector<float>& cpu_result,
                   const std::vector<float>& gpu_result,
                   float tolerance = 1e-4f);
 
-void spmvCPU_int(const SPASMMatrixHost& A, const std::vector<int>& values_int,
-                 const std::vector<int>& x, std::vector<int>& y);
-
-bool verifyResults_int(const std::vector<int>& cpu_result,
-                       const std::vector<int>& gpu_result);
-
 #endif

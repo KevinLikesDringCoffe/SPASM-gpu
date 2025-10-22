@@ -189,7 +189,7 @@ __global__ void spmvKernel(
 
         for (int i = 0; i < 4; i++) {
             uint32_t rowIdx = globalRow + i;
-            if (rowIdx < rows && localY[i] != 0.0f) {
+            if (rowIdx < rows) {
                 atomicAdd(&y[rowIdx], localY[i]);
             }
         }
@@ -211,7 +211,7 @@ extern "C" void launchSPMVKernel(
     uint32_t maxBlocksPerTile)
 {
     dim3 grid(numTiles);
-    dim3 block(maxBlocksPerTile);
+    dim3 block(256);
 
     spmvKernel<<<grid, block>>>(
         tilePositions,
