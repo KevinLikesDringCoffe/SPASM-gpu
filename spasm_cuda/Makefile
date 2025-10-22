@@ -1,48 +1,40 @@
-NVCC := nvcc
-CXX := g++
+NVCC = nvcc
+NVCC_FLAGS = -O3 -arch=sm_80 -std=c++14
 
-CUDA_ARCH := -arch=sm_80
+TARGET = spasm_spmv_benchmark
+SOURCES = main.cu \
+          src/spasm_io.cu \
+          src/spasm_spmv_cpu.cu \
+          src/spasm_spmv_gpu.cu \
+          kernels/spasm_spmv_kernel.cu
 
-NVCC_FLAGS := -O3 $(CUDA_ARCH) -Xcompiler -fopenmp
-CXX_FLAGS := -O3 -std=c++17 -fopenmp
+OBJS = main.o \
+       spasm_io.o \
+       spasm_spmv_cpu.o \
+       spasm_spmv_gpu.o \
+       spasm_spmv_kernel.o
 
-INCLUDE_DIRS := -I. -I../spasm_converter/include -I../spasm_converter
+all: $(TARGET)
 
-SPASM_CONVERTER_DIR := ../spasm_converter
-MMIO_OBJ := $(SPASM_CONVERTER_DIR)/mmio.o
+$(TARGET): $(OBJS)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
-SRC_DIR := src
-KERNEL_DIR := kernels
-BUILD_DIR := build
+main.o: main.cu include/spasm_cuda.h
+	$(NVCC) $(NVCC_FLAGS) -c main.cu -o $@
 
-TARGET := spasm_spmv_benchmark
+spasm_io.o: src/spasm_io.cu include/spasm_cuda.h
+	$(NVCC) $(NVCC_FLAGS) -c src/spasm_io.cu -o $@
 
-CUDA_SRCS := $(KERNEL_DIR)/spasm_spmv_kernel.cu $(SRC_DIR)/spasm_spmv.cu main.cu
+spasm_spmv_cpu.o: src/spasm_spmv_cpu.cu include/spasm_cuda.h
+	$(NVCC) $(NVCC_FLAGS) -c src/spasm_spmv_cpu.cu -o $@
 
-CUDA_OBJS := $(patsubst %.cu,$(BUILD_DIR)/%.o,$(notdir $(CUDA_SRCS)))
+spasm_spmv_gpu.o: src/spasm_spmv_gpu.cu include/spasm_cuda.h
+	$(NVCC) $(NVCC_FLAGS) -c src/spasm_spmv_gpu.cu -o $@
 
-all: $(BUILD_DIR) $(MMIO_OBJ) $(TARGET)
-
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
-
-$(MMIO_OBJ):
-	@echo "Building MMIO library..."
-	$(MAKE) -C $(SPASM_CONVERTER_DIR) mmio.o
-
-$(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.cu
-	$(NVCC) $(NVCC_FLAGS) $(INCLUDE_DIRS) -c $< -o $@
-
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cu
-	$(NVCC) $(NVCC_FLAGS) $(INCLUDE_DIRS) -c $< -o $@
-
-$(BUILD_DIR)/%.o: %.cu
-	$(NVCC) $(NVCC_FLAGS) $(INCLUDE_DIRS) -c $< -o $@
-
-$(TARGET): $(CUDA_OBJS) $(MMIO_OBJ)
-	$(NVCC) $(NVCC_FLAGS) $^ -o $@
+spasm_spmv_kernel.o: kernels/spasm_spmv_kernel.cu
+	$(NVCC) $(NVCC_FLAGS) -c kernels/spasm_spmv_kernel.cu -o $@
 
 clean:
-	rm -rf $(BUILD_DIR) $(TARGET)
+	rm -f $(OBJS) $(TARGET)
 
 .PHONY: all clean

@@ -1,106 +1,140 @@
 # SPASM CUDA SpMV Implementation
 
-High-performance CUDA implementation of Sparse Matrix-Vector Multiplication (SpMV) using the SPASM format.
+This directory contains a CUDA implementation of Sparse Matrix-Vector Multiplication (SpMV) using the SPASM format.
 
-## Features
+## Architecture
 
-- **Optimized CUDA Kernel**: Pattern-specific device functions for 16 common templates
-- **Warp-level Optimization**: Minimized warp divergence by grouping same-pattern blocks
-- **Memory Optimizations**:
-  - Constant memory for template masks
-  - Shared memory caching for input vectors
-  - Coalesced memory access for values
-- **CPU Reference**: SPASM-based CPU implementation for correctness verification
-- **Performance Metrics**: GFLOPS, throughput (GNNZ/s), and speedup reporting
+### Kernel Design
+- **1 tile per CUDA block**: Each CUDA block processes one SPASM tile
+- **1 4x4 block per thread**: Each thread processes one 4x4 sparse block
+- **Template-based optimization**: Uses specialized functions for 16 common sparsity patterns
 
-## Build Requirements
+### File Structure
+```
+spasm_cuda/
+├── include/
+│   └── spasm_cuda.h          # Main header file
+├── src/
+│   ├── spasm_io.cu           # SPASM file loading
+│   ├── spasm_spmv_cpu.cu     # CPU reference implementation
+│   └── spasm_spmv_gpu.cu     # GPU memory management
+├── kernels/
+│   └── spasm_spmv_kernel.cu  # CUDA kernel implementation
+├── main.cu                   # Benchmark program
+└── Makefile                  # Build configuration
+```
 
-- CUDA Toolkit (tested with CUDA 11.0+)
-- NVIDIA GPU with Compute Capability 8.0+ (A100, A40, etc.)
-- GCC with C++17 support
-- OpenMP
+## Building
 
-## Build Instructions
+The code requires NVIDIA CUDA Toolkit with compute capability 8.0 (for A100 GPU).
 
 ```bash
 cd spasm_cuda
 make
 ```
 
+This will produce the executable `spasm_spmv_benchmark`.
+
 ## Usage
 
 ```bash
-./spasm_spmv_benchmark <spasm_file> [num_runs]
+./spasm_spmv_benchmark <spasm_file> [options]
+
+Options:
+  -n <iterations>  Number of iterations for GPU benchmark (default: 100)
+  -h, --help       Print help message
 ```
 
-**Arguments:**
-- `spasm_file`: Path to SPASM format matrix file
-- `num_runs`: Number of SpMV iterations for timing (default: 100)
+### Example
 
-**Example:**
 ```bash
-./spasm_spmv_benchmark ../matrices/example.spasm 100
+# Run with default 100 iterations
+./spasm_spmv_benchmark matrix.spasm
+
+# Run with 1000 iterations for more accurate timing
+./spasm_spmv_benchmark matrix.spasm -n 1000
 ```
 
 ## Output
 
-The benchmark reports:
-- Matrix information (dimensions, NNZ, compression ratio)
-- CPU performance (time, GFLOPS)
-- GPU performance (time, GFLOPS, throughput, speedup)
-- Verification results (max/avg error, correctness)
+The program will:
+1. Load the SPASM matrix from file
+2. Run CPU SpMV (single iteration for verification)
+3. Run GPU SpMV (multiple iterations for performance measurement)
+4. Compare CPU and GPU results
+5. Report performance metrics (time, GFLOP/s, speedup)
 
-## Architecture
+### Example Output
+```
+========================================
+SPASM SpMV Benchmark
+========================================
+File: matrix.spasm
+GPU iterations: 100
 
-### CUDA Kernel Design
+Loading SPASM matrix...
+Loaded SPASM matrix: 10000x10000, nnz=100000, tiles=100, positions=5000
 
-**Tile-level Parallelism:**
-- Each CUDA block processes one tile
-- Threads within a block process position encodings
+Running CPU SpMV...
+CPU SpMV Performance:
+  Time: 5.234 ms
+  Performance: 38.2 GFLOP/s
 
-**Pattern Specialization:**
-- 16 optimized device functions for common patterns:
-  - Row patterns (0x000f, 0x00f0, 0x0f00, 0xf000)
-  - Column patterns (0x1111, 0x2222, 0x4444, 0x8888)
-  - 2x2 blocks (0x0033, 0x00cc, 0x3300, 0xcc00)
-  - Diagonal patterns (0x8421, 0x4218, 0x2184, 0x1842)
-- Generic fallback for arbitrary patterns
+Running GPU SpMV...
+GPU SpMV Performance:
+  Total time: 12.456 ms (100 iterations)
+  Average time: 0.125 ms per iteration
+  Performance: 1600.0 GFLOP/s
 
-**Memory Hierarchy:**
-- Constant memory: Template masks (16 × 2 bytes)
-- Shared memory: Input vector tile cache
-- Global memory: Coalesced access for values array
+Verifying results...
+Verification PASSED! Max error: 0.000001
 
-## Target Hardware
-
-Optimized for NVIDIA A100 GPU (sm_80 architecture).
-
-To change target architecture, edit `CUDA_ARCH` in Makefile:
-```makefile
-CUDA_ARCH := -arch=sm_XX
+========================================
+SUCCESS: GPU results match CPU results!
+========================================
+Speedup: 41.9x
 ```
 
-## Directory Structure
+## Implementation Details
 
-```
-spasm_cuda/
-├── kernels/
-│   └── spasm_spmv_kernel.cu    # CUDA kernel implementation
-├── src/
-│   ├── spasm_spmv.cu           # Host-side CUDA API
-│   └── cpu_reference.cpp       # CPU reference implementation
-├── include/
-│   └── spasm_cuda.h            # API header
-├── utils/
-│   └── timer.h                 # Timing utilities
-├── main.cu                     # Benchmark program
-├── Makefile
-└── README.md
-```
+### CUDA Kernel Strategy
 
-## Performance Tips
+The kernel uses a tile-based approach:
+- Each tile is assigned to one CUDA block
+- Within each tile, threads process 4x4 blocks in parallel
+- Uses atomic operations to accumulate results to avoid race conditions
 
-1. Ensure SPASM matrix has good pattern distribution
-2. Use appropriate tile size (default: 1024)
-3. Run multiple iterations for accurate timing
-4. Verify GPU utilization with `nvidia-smi`
+### Template Patterns
+
+The implementation supports 16 predefined sparsity patterns:
+- Patterns 0-3: Full rows (0x000f, 0x00f0, 0x0f00, 0xf000)
+- Patterns 4-7: Full columns (0x1111, 0x2222, 0x4444, 0x8888)
+- Patterns 8-11: 2x2 sub-blocks (0x0033, 0x00cc, 0x3300, 0xcc00)
+- Patterns 12-15: Diagonals (0x8421, 0x4218, 0x2184, 0x1842)
+
+### Memory Layout
+
+The SPASM format stores:
+- **Tile positions**: COO format for non-empty tiles
+- **Tile block ranges**: Start/end indices for each tile's blocks
+- **Position encodings**: Packed 32-bit encoding (column index, row index, template ID, flags)
+- **Values**: 4 float values per position encoding
+- **Template patterns**: 16-bit masks for sparsity patterns
+
+## Performance Considerations
+
+- **Thread utilization**: Each block processes all 4x4 blocks within a tile in parallel
+- **Memory coalescing**: Position encodings and values are accessed sequentially
+- **Atomic operations**: Used for result accumulation (may be a bottleneck for dense tiles)
+- **Occupancy**: Limited by register usage and shared memory (not used in this basic version)
+
+## Testing on A100
+
+When you transfer this to the A100 server:
+
+1. Copy the entire `spasm_cuda` directory
+2. Ensure you have a SPASM format file (use `mtx2spasm` from `spasm_converter` to convert)
+3. Run `make` to compile
+4. Execute the benchmark
+
+If you need to adjust the compute capability, edit the Makefile and change `-arch=sm_80` to match your GPU.
