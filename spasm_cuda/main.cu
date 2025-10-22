@@ -8,8 +8,9 @@
 void printUsage(const char* progName) {
     std::cout << "Usage: " << progName << " <spasm_file> [options]" << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "  -n <iterations>  Number of iterations for GPU benchmark (default: 100)" << std::endl;
-    std::cout << "  -h, --help       Print this help message" << std::endl;
+    std::cout << "  -n <iterations>   Number of iterations for GPU benchmark (default: 100)" << std::endl;
+    std::cout << "  -t <tolerance>    Relative error tolerance for verification (default: 1e-4)" << std::endl;
+    std::cout << "  -h, --help        Print this help message" << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -20,6 +21,7 @@ int main(int argc, char** argv) {
 
     const char* filename = nullptr;
     int numIterations = 100;
+    float tolerance = 1e-4f;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -30,6 +32,13 @@ int main(int argc, char** argv) {
                 numIterations = atoi(argv[++i]);
             } else {
                 std::cerr << "Error: -n requires an argument" << std::endl;
+                return 1;
+            }
+        } else if (strcmp(argv[i], "-t") == 0) {
+            if (i + 1 < argc) {
+                tolerance = atof(argv[++i]);
+            } else {
+                std::cerr << "Error: -t requires an argument" << std::endl;
                 return 1;
             }
         } else if (filename == nullptr) {
@@ -48,6 +57,7 @@ int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
     std::cout << "File: " << filename << std::endl;
     std::cout << "GPU iterations: " << numIterations << std::endl;
+    std::cout << "Tolerance: " << tolerance << std::endl;
     std::cout << std::endl;
 
     try {
@@ -88,7 +98,7 @@ int main(int argc, char** argv) {
         cudaMemcpy(y_gpu.data(), cudaMatrix.d_y, hostMatrix.rows * sizeof(float), cudaMemcpyDeviceToHost);
 
         std::cout << "Verifying results..." << std::endl;
-        bool correct = verifyResults(y_cpu, y_gpu);
+        bool correct = verifyResults(y_cpu, y_gpu, tolerance);
         std::cout << std::endl;
 
         if (correct) {

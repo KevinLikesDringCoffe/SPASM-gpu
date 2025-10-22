@@ -143,33 +143,65 @@ bool verifyResults(const std::vector<float>& cpu_result,
     }
 
     int errors = 0;
-    float maxError = 0.0f;
-    int maxErrorIdx = -1;
+    int smallErrors = 0;
+    int largeErrors = 0;
+    float maxAbsError = 0.0f;
+    float maxRelError = 0.0f;
+    int maxAbsErrorIdx = -1;
+    int maxRelErrorIdx = -1;
 
     for (size_t i = 0; i < cpu_result.size(); i++) {
         float diff = std::abs(cpu_result[i] - gpu_result[i]);
-        float relError = (cpu_result[i] != 0.0f) ? diff / std::abs(cpu_result[i]) : diff;
+        float absCpu = std::abs(cpu_result[i]);
+        float relError = (absCpu > 1e-10f) ? diff / absCpu : diff;
 
         if (relError > tolerance) {
             if (errors < 10) {
                 std::cerr << "Mismatch at index " << i << ": CPU=" << cpu_result[i]
-                          << ", GPU=" << gpu_result[i] << ", error=" << relError << std::endl;
+                          << ", GPU=" << gpu_result[i]
+                          << ", abs_err=" << diff
+                          << ", rel_err=" << relError << std::endl;
             }
             errors++;
+
+            if (diff > 1.0f) {
+                largeErrors++;
+            } else {
+                smallErrors++;
+            }
         }
 
-        if (diff > maxError) {
-            maxError = diff;
-            maxErrorIdx = i;
+        if (diff > maxAbsError) {
+            maxAbsError = diff;
+            maxAbsErrorIdx = i;
+        }
+
+        if (relError > maxRelError && absCpu > 1e-10f) {
+            maxRelError = relError;
+            maxRelErrorIdx = i;
         }
     }
 
     if (errors > 0) {
         std::cerr << "Total errors: " << errors << " / " << cpu_result.size() << std::endl;
-        std::cerr << "Max error: " << maxError << " at index " << maxErrorIdx << std::endl;
+        std::cerr << "  Small errors (< 1.0): " << smallErrors << std::endl;
+        std::cerr << "  Large errors (>= 1.0): " << largeErrors << std::endl;
+        std::cerr << "Max absolute error: " << maxAbsError << " at index " << maxAbsErrorIdx << std::endl;
+        if (maxRelErrorIdx >= 0) {
+            std::cerr << "Max relative error: " << maxRelError << " at index " << maxRelErrorIdx << std::endl;
+            std::cerr << "  CPU[" << maxRelErrorIdx << "]=" << cpu_result[maxRelErrorIdx]
+                      << ", GPU[" << maxRelErrorIdx << "]=" << gpu_result[maxRelErrorIdx] << std::endl;
+        }
+
+        if (largeErrors == 0 && smallErrors == errors) {
+            std::cerr << "\nNote: All errors are small (< 1.0). This may be due to floating-point" << std::endl;
+            std::cerr << "      rounding differences between CPU and GPU atomic operations." << std::endl;
+            std::cerr << "      Consider using a larger tolerance (e.g., 1e-3 or 1e-2)." << std::endl;
+        }
+
         return false;
     }
 
-    std::cout << "Verification PASSED! Max error: " << maxError << std::endl;
+    std::cout << "Verification PASSED! Max absolute error: " << maxAbsError << std::endl;
     return true;
 }
